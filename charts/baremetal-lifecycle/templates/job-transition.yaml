@@ -1,0 +1,58 @@
+# Job for Ironic state transition - runs openstack baremetal node <action>
+# Only stable states emit Jobs; transition states (cleaning, deploying, inspecting) do not.
+{{- $node := lookup "baremetal.ogen.krateo.io/v1alpha1" "Node" (include "baremetal-lifecycle.nodeNamespace" .) .Values.nodeName -}}
+{{- $currentState := "" -}}
+{{- if $node -}}
+  {{- $currentState = $node.status.provision_state | default "" -}}
+{{- end -}}
+{{- $uuid := "" -}}
+{{- if $node -}}
+  {{- $uuid = $node.status.metadata.uuid | default $node.status.uuid | default "" -}}
+{{- end -}}
+{{- $nextAction := "" -}}
+{{- if eq $currentState "enroll" }}{{ $nextAction = "manage" -}}
+{{- else if eq $currentState "manageable" -}}
+  {{- if .Values.runInspect }}{{ $nextAction = "inspect" -}}
+  {{- else }}{{ $nextAction = "provide" -}}
+  {{- end -}}
+{{- else if eq $currentState "available" }}{{ $nextAction = "deploy" -}}
+{{- else if eq $currentState "active" }}{{ $nextAction = "undeploy" -}}
+{{- end -}}
+{{- if and $nextAction $uuid }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ironic-{{ $nextAction }}-{{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app.kubernetes.io/name: baremetal-lifecycle
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: transition
+          image: {{ .Values.openstackClientImage | quote }}
+          command:
+            - openstack
+            - baremetal
+            - node
+            - {{ $nextAction }}
+            - {{ $uuid | quote }}
+          env:
+            - name: OS_AUTH_TYPE
+              value: {{ .Values.ironicAuthType | quote }}
+            - name: OS_BAREMETAL_API_VERSION
+              value: "1"
+            {{- if .Values.ironicApiUrl }}
+            - name: OS_ENDPOINT
+              value: {{ .Values.ironicApiUrl | quote }}
+            {{- end }}
+{{- end }}

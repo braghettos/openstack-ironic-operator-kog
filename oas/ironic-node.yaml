@@ -1,0 +1,196 @@
+# Minimal OpenAPI 3.0 spec for Ironic Node resource (CRUD only)
+# Used by oasgen-provider to generate Node CRD for rest-dynamic-controller
+# Ref: https://docs.openstack.org/api-ref/baremetal/
+
+openapi: 3.0.3
+info:
+  title: Ironic Bare Metal Node API
+  description: Minimal spec for Node CRUD (state transitions via Jobs)
+  version: 1.0.0
+
+servers:
+  - url: http://ironic-api.openstack.svc.cluster.local:6385
+    description: Ironic API (override via NodeConfiguration)
+
+paths:
+  /v1/nodes:
+    get:
+      summary: List nodes
+      operationId: listNodes
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: provision_state
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Node'
+    post:
+      summary: Create node
+      operationId: createNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodeCreate'
+      responses:
+        '201':
+          description: Created node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+
+  /v1/nodes/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get node by UUID
+      operationId: getNode
+      responses:
+        '200':
+          description: Node details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '404':
+          description: Node not found
+    patch:
+      summary: Update node
+      operationId: updateNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NodePatch'
+      responses:
+        '200':
+          description: Updated node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+    delete:
+      summary: Delete node
+      operationId: deleteNode
+      responses:
+        '204':
+          description: Node deleted
+        '404':
+          description: Node not found
+
+components:
+  parameters:
+    X-Ironic-Endpoint:
+      name: X-Ironic-Endpoint
+      in: header
+      required: false
+      description: Override Ironic API base URL (used by NodeConfiguration)
+      schema:
+        type: string
+  schemas:
+    Node:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        driver:
+          type: string
+        driver_info:
+          type: object
+          additionalProperties: true
+        provision_state:
+          type: string
+          readOnly: true
+        target_provision_state:
+          type: string
+          readOnly: true
+        power_state:
+          type: string
+          readOnly: true
+        instance_info:
+          type: object
+          additionalProperties: true
+        properties:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true
+        maintenance:
+          type: boolean
+        network_interface:
+          type: string
+        resource_class:
+          type: string
+
+    NodeCreate:
+      type: object
+      required:
+        - driver
+      properties:
+        name:
+          type: string
+        driver:
+          type: string
+        driver_info:
+          type: object
+          additionalProperties: true
+        instance_info:
+          type: object
+          additionalProperties: true
+        properties:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true
+        network_interface:
+          type: string
+        resource_class:
+          type: string
+
+    NodePatch:
+      type: object
+      properties:
+        name:
+          type: string
+        driver_info:
+          type: object
+          additionalProperties: true
+        instance_info:
+          type: object
+          additionalProperties: true
+        properties:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true
+        maintenance:
+          type: boolean
