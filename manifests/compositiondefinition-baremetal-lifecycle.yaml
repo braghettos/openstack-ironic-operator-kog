@@ -1,0 +1,20 @@
+# CompositionDefinition for baremetal-lifecycle chart
+# Used by core-provider to deploy composition-dynamic-controller.
+#
+# Prerequisites:
+#   1. Package the chart: make package-chart
+#   2. Publish the .tgz to a URL (HTTP, OCI, or Helm repo)
+#   3. Update spec.chart.url below to point to the published chart
+#
+# Then: kubectl apply -f manifests/compositiondefinition-baremetal-lifecycle.yaml
+---
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: baremetal-lifecycle
+  namespace: krateo-system
+spec:
+  chart:
+    # Replace with your published chart URL (e.g. OCI or tgz)
+    url: https://example.com/baremetal-lifecycle-0.1.0.tgz
+    version: "0.1.0"

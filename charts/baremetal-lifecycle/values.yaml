@@ -1,0 +1,42 @@
+# baremetal-lifecycle chart values
+# Used by composition-dynamic-controller; override via Composition spec
+
+nodeName: ""
+driver: ipmi
+driver_info:
+  ipmi_address: "172.19.74.202"
+  ipmi_username: ironic
+  ipmi_password: ""
+
+# Ports (PXE MAC addresses) - created via Job when node is in enroll state
+# Format: [{ address: "9c:b6:54:b2:b0:ca" }] or simple list ["9c:b6:54:b2:b0:ca"]
+ports: []
+
+# instance_info required before deploy (available -> active)
+instance_info: {}
+  # image_source: "http://172.19.74.1:8089/debian-12-generic-amd64.qcow2"
+  # image_checksum: "http://172.19.74.1:8089/CHECKSUM"
+
+# Config Drive for cloud-init (merged into instance_info when deploy)
+# Ironic builds config drive from meta_data, user_data, network_data
+configDrive: {}
+  # metaData: { hostname: "server1", uuid: "...", meta: {} }
+  # userData: "#cloud-config\npackage_update: true\n..."
+  # networkData: { networks: [], services: [] }
+
+# Ironic API endpoint for Jobs
+ironicApiUrl: "http://ironic-api.openstack.svc.cluster.local:6385"
+ironicAuthType: "none"
+
+# OpenStack client image
+openstackClientImage: "quay.io/airshipit/openstack-client:2025.1-ubuntu_noble"
+
+# When true, run inspect before provide when in manageable state.
+# Use two-phase deploy: first with runInspect=true, wait for inspect Job, then upgrade with runInspect=false.
+runInspect: false
+
+# Node CR namespace (where rest-dynamic-controller watches)
+nodeNamespace: ""
+
+# Configuration ref for Node CR (optional - for Ironic API auth)
+configurationRef: {}

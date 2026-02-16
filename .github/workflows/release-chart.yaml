@@ -1,0 +1,22 @@
+# Package and optionally publish baremetal-lifecycle chart
+# On release: creates .tgz artifact
+# To publish to OCI: add secrets and helm push (see README)
+name: Release Chart
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package chart
+        run: |
+          helm package charts/baremetal-lifecycle -d dist/
+          ls -la dist/
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baremetal-lifecycle-chart
+          path: dist/*.tgz

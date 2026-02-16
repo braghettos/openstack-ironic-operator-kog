@@ -1,0 +1,58 @@
+# RestDefinition for Ironic Node - used by oasgen-provider to generate Node CRD
+# and deploy rest-dynamic-controller. Requires ConfigMap ironic-node-oas with OAS.
+#
+# Apply order:
+#   1. kubectl create configmap ironic-node-oas -n openstack --from-file=ironic-node.yaml=../oas/ironic-node.yaml
+#   2. kubectl apply -f restdefinition-node.yaml
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-node
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-node-oas/ironic-node.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: Node
+    identifiers:
+      - name
+    additionalStatusFields:
+      - uuid
+      - provision_state
+      - power_state
+      - target_provision_state
+    excludedSpecFields:
+      - uuid
+    configurationFields:
+      - fromOpenAPI:
+          name: X-Ironic-Endpoint
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/nodes
+        identifiersMatchPolicy: OR
+      - action: get
+        method: GET
+        path: /v1/nodes/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: status.metadata.uuid
+      - action: create
+        method: POST
+        path: /v1/nodes
+      - action: update
+        method: PATCH
+        path: /v1/nodes/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: status.metadata.uuid
+      - action: delete
+        method: DELETE
+        path: /v1/nodes/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: status.metadata.uuid

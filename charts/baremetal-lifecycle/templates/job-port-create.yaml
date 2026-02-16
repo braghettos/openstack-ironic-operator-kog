@@ -1,0 +1,54 @@
+# Job to create Ironic ports (PXE MAC) - runs when node is in enroll and ports specified
+{{- $node := lookup "baremetal.ogen.krateo.io/v1alpha1" "Node" (include "baremetal-lifecycle.nodeNamespace" .) .Values.nodeName -}}
+{{- $uuid := "" -}}
+{{- if $node }}{{ $uuid = $node.status.metadata.uuid | default $node.status.uuid | default "" }}{{ end -}}
+{{- $currentState := "" -}}
+{{- if $node }}{{ $currentState = $node.status.provision_state | default "" }}{{ end -}}
+{{- $hasPorts := false -}}
+{{- range .Values.ports -}}
+  {{- if or (and (kindIs "map" .) .address) (kindIs "string" .) }}{{ $hasPorts = true }}{{ end -}}
+{{- end -}}
+{{- if and $uuid (eq $currentState "enroll") $hasPorts }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ironic-port-create-{{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app.kubernetes.io/name: baremetal-lifecycle
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: port-create
+          image: {{ .Values.openstackClientImage | quote }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              {{- range .Values.ports }}
+              {{- $mac := "" }}
+              {{- if kindIs "map" . }}{{ $mac = .address | default "" }}{{ else if kindIs "string" . }}{{ $mac = . }}{{ end }}
+              {{- if $mac }}
+              openstack baremetal port create --node {{ $uuid | quote }} --address {{ $mac | quote }}
+              {{- end }}
+              {{- end }}
+          env:
+            - name: OS_AUTH_TYPE
+              value: {{ .Values.ironicAuthType | quote }}
+            - name: OS_BAREMETAL_API_VERSION
+              value: "1"
+            {{- if .Values.ironicApiUrl }}
+            - name: OS_ENDPOINT
+              value: {{ .Values.ironicApiUrl | quote }}
+            {{- end }}
+{{- end }}
