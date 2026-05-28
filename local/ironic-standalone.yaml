@@ -1,0 +1,73 @@
+# Standalone Ironic for local testing, running in-cluster (kind).
+# Uses the official openstack-helm image (quay.io/airshipit/ironic) with the combined
+# `ironic` binary (api+conductor), SQLite, noauth, json-rpc and fake-hardware drivers.
+# The ironic.conf is supplied via the `ironic-config` ConfigMap (created from local/ironic.conf).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openstack
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ironic
+  namespace: openstack
+  labels:
+    app: ironic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ironic
+  template:
+    metadata:
+      labels:
+        app: ironic
+    spec:
+      containers:
+        - name: ironic
+          image: quay.io/airshipit/ironic:2026.1-ubuntu_noble
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - -lc
+            - |
+              mkdir -p /tmp/ironic/tftpboot/master_images /tmp/ironic/httpboot
+              /var/lib/openstack/bin/ironic-dbsync --config-file /etc/ironic/ironic.conf create_schema || true
+              exec /var/lib/openstack/bin/ironic --config-file /etc/ironic/ironic.conf
+          ports:
+            - name: api
+              containerPort: 6385
+          readinessProbe:
+            httpGet:
+              path: /v1/nodes
+              port: 6385
+              httpHeaders:
+                - name: X-OpenStack-Ironic-API-Version
+                  value: "1.81"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ironic/ironic.conf
+              subPath: ironic.conf
+      volumes:
+        - name: config
+          configMap:
+            name: ironic-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ironic
+  namespace: openstack
+  labels:
+    app: ironic
+spec:
+  selector:
+    app: ironic
+  ports:
+    - name: api
+      port: 6385
+      targetPort: 6385
