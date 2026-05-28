@@ -1,11 +1,14 @@
 baremetal-lifecycle has been installed.
 
-The chart creates:
-- A Node CR (synced to Ironic via rest-dynamic-controller)
-- Jobs for state transitions (manage, inspect, provide, deploy, undeploy)
+The composition creates:
+- A Node CR (synced to Ironic by KOG / rest-dynamic-controller)
+- A single, idempotent provisioner Job that drives the standalone Ironic state machine:
+    enroll --manage--> manageable [--inspect--> manageable] --provide--> available --deploy--> active
+  The Job runs the whole flow in one pass and STOPS at 'active' (it never undeploys).
 
-State flow: enroll -> manage -> manageable -> (inspect?) -> provide -> available -> deploy -> active
+Watch progress:
+  kubectl -n {{ .Release.Namespace }} logs -f job/ironic-provision-{{ .Release.Name }}
+  kubectl get nodes.baremetal.ogen.krateo.io {{ .Values.nodeName }} -o jsonpath='{.status.provision_state}'
 
-Inspect then provide: Deploy with runInspect=true, wait for ironic-inspect Job, then upgrade with runInspect=false.
-
-To deploy an image, set instance_info in values before the node reaches 'available'.
+Set instance_info.image_source (and image_checksum) in values to deploy an image.
+Set runInspect=true to run inspection before provide.

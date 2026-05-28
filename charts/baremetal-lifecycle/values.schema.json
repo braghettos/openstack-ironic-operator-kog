@@ -35,15 +35,24 @@
     },
     "ironicApiUrl": {
       "type": "string",
-      "default": "http://ironic-api.openstack.svc.cluster.local:6385"
+      "default": "http://ironic.openstack.svc.cluster.local:6385"
     },
     "ironicAuthType": {
       "type": "string",
       "default": "none"
     },
+    "ironicApiVersion": {
+      "type": "string",
+      "default": "1.81"
+    },
+    "waitTimeout": {
+      "type": "integer",
+      "description": "Seconds passed to `openstack baremetal node ... --wait` per transition",
+      "default": 300
+    },
     "openstackClientImage": {
       "type": "string",
-      "default": "quay.io/airshipit/openstack-client:2025.1-ubuntu_noble"
+      "default": "quay.io/airshipit/openstack-client:2026.1-ubuntu_noble"
     },
     "runInspect": {
       "type": "boolean",

@@ -24,15 +24,20 @@ configDrive: {}
   # userData: "#cloud-config\npackage_update: true\n..."
   # networkData: { networks: [], services: [] }
 
-# Ironic API endpoint for Jobs
-ironicApiUrl: "http://ironic-api.openstack.svc.cluster.local:6385"
+# Ironic API endpoint used by the provisioner Job (standalone/noauth).
+ironicApiUrl: "http://ironic.openstack.svc.cluster.local:6385"
 ironicAuthType: "none"
+ironicApiVersion: "1.81"
 
-# OpenStack client image
-openstackClientImage: "quay.io/airshipit/openstack-client:2025.1-ubuntu_noble"
+# Per-transition wait timeout (seconds) passed to `openstack baremetal node ... --wait`.
+waitTimeout: 300
 
-# When true, run inspect before provide when in manageable state.
-# Use two-phase deploy: first with runInspect=true, wait for inspect Job, then upgrade with runInspect=false.
+# OpenStack client image used by the provisioner Job.
+openstackClientImage: "quay.io/airshipit/openstack-client:2026.1-ubuntu_noble"
+
+# When true, the provisioner Job runs `inspect` once (manageable -> inspecting -> manageable)
+# before `provide`. The Job drives the whole state machine in a single run, so no two-phase
+# helm upgrade is needed.
 runInspect: false
 
 # Node CR namespace (where rest-dynamic-controller watches)
