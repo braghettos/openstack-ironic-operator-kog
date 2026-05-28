@@ -1,6 +1,6 @@
 apiVersion: v2
 name: baremetal-lifecycle
-description: Helm chart for Ironic bare metal server lifecycle via composition-dynamic-controller. Creates Node CRs and Jobs for state transitions (manage, inspect, provide, deploy, undeploy).
+description: Helm chart for Ironic bare metal server provisioning via composition-dynamic-controller. Creates a Node CR (synced by KOG) and a single idempotent Job that drives the standalone Ironic state machine to 'active'.
 type: application
 version: 0.1.0
 appVersion: "1.0"
