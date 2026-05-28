@@ -1,2 +1,4 @@
 dist/
 *.tgz
+.claude/settings.local.json
+local/kubeconfig*
