@@ -22,7 +22,8 @@ help:
 	@echo "  validate-chart - Verify Node CR and Job templates render"
 	@echo "  deploy-ironic  - Helm install Ironic with overrides (req: openstack-helm repo, backends)"
 	@echo "Local test env (isolated kind cluster, never touches ~/.kube/config):"
-	@echo "  local-up       - Create kind cluster + deploy standalone Ironic (fake drivers, noauth)"
+	@echo "  local-up       - Create kind cluster + Ironic + Krateo providers"
+	@echo "  krateo-up      - Install Krateo KOG (oasgen) + composition (core) providers"
 	@echo "  ironic-up      - (Re)deploy standalone Ironic into the kind cluster"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
@@ -97,7 +98,19 @@ smoke-test:   # drive a fake node enroll->active against the local Ironic (CLEAN
 	IRONIC_API=http://localhost:6385 CLEANUP=$${CLEANUP:-1} ./scripts/smoke-test-ironic.sh; rc=$$?; \
 	kill $$pf 2>/dev/null; exit $$rc
 
-local-up: kind-up ironic-up   # create kind cluster + deploy standalone Ironic
+KRATEO_CORE_VERSION ?= 1.0.0
+KRATEO_OASGEN_VERSION ?= 0.11.1
+
+krateo-up:    # install Krateo KOG (oasgen-provider) + composition engine (core-provider)
+	helm repo add krateo https://charts.krateo.io 2>/dev/null || true
+	helm repo update krateo
+	$(HELMK) upgrade --install krateo-core-provider krateo/core-provider \
+		-n krateo-system --create-namespace --version $(KRATEO_CORE_VERSION) --wait --timeout 6m
+	$(HELMK) upgrade --install krateo-oasgen-provider krateo/oasgen-provider \
+		-n krateo-system --version $(KRATEO_OASGEN_VERSION) --wait --timeout 6m
+	$(KUBECTL) -n krateo-system get pods
+
+local-up: kind-up ironic-up krateo-up   # create kind cluster + Ironic + Krateo providers
 
 local-down:   # delete the whole local kind cluster
 	-kind delete cluster --name $(KIND_CLUSTER) --kubeconfig $(KUBECONFIG_FILE)
