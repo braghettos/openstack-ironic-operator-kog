@@ -54,15 +54,10 @@ spec:
       - action: create
         method: POST
         path: /v1/nodes
-      - action: update
-        method: PATCH
-        path: /v1/nodes/{uuid}
-        requestFieldMapping:
-          # Ironic accepts the node NAME as the {ident} in /v1/nodes/{ident}, so map the
-          # path param to spec.name (always known) instead of the uuid (unknown until
-          # after create). This makes observe = GET /v1/nodes/<name> -> 404 (create) or 200.
-          - inPath: uuid
-            inCustomResource: spec.name
+      # No `update` verb: Ironic PATCH expects RFC-6902 JSON-Patch and clears instance_info
+      # during cleaning, so KOG's update would 400 and freeze the Node CR in ReconcileError
+      # (stalling status.provision_state, which the composition's lookup depends on). This
+      # operator never updates a node in place - it is create + provision transitions + delete.
       - action: delete
         method: DELETE
         path: /v1/nodes/{uuid}

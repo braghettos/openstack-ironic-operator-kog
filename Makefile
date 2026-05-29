@@ -112,18 +112,30 @@ krateo-up:    # install Krateo KOG (oasgen-provider) + composition engine (core-
 		-n krateo-system --version $(KRATEO_OASGEN_VERSION) --wait --timeout 6m
 	$(KUBECTL) -n krateo-system get pods
 
-restdef-up:   # apply the OAS ConfigMap + RestDefinition (KOG generates the Node CRD + controller)
+restdef-up:   # apply OAS ConfigMaps + both RestDefinitions (Node CRUD + NodeProvision action)
 	KUBECTL="$(KUBECTL)" ./scripts/create-ironic-oas-configmap.sh $(IRONIC_NS)
+	$(KUBECTL) create configmap ironic-provision-oas -n $(IRONIC_NS) \
+		--from-file=provision.yaml=oas/ironic-provision.yaml --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	$(KUBECTL) apply -f manifests/restdefinition-node.yaml
+	$(KUBECTL) apply -f manifests/restdefinition-provision.yaml
 	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node --timeout=180s
+	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node-provision --timeout=180s
 
-provision-demo: # run the composition to provision a sample fake node -> active
-	$(HELMK) upgrade --install baremetal-lifecycle ./charts/baremetal-lifecycle -n $(IRONIC_NS) \
-		--set nodeName=server01 --set driver=fake-hardware \
-		--set instance_info.image_source=http://example.invalid/image.qcow2 \
-		--set instance_info.image_checksum=0 \
-		--set ports[0].address=9c:b6:54:b2:b0:ca --timeout 8m
-	$(KUBECTL) -n $(IRONIC_NS) logs job/ironic-provision-baremetal-lifecycle --tail=5
+# Provision a sample fake node. The state machine is lookup-driven: each reconcile renders the
+# NodeProvision CR for the node's current state. composition-dynamic-controller does this on its
+# reconcile loop; here we simulate reconciles with repeated `helm upgrade` until the node is active.
+PROVISION_NODE ?= server01
+provision-demo:
+	@for i in $$(seq 1 40); do \
+	  $(HELMK) upgrade --install baremetal-lifecycle ./charts/baremetal-lifecycle -n $(IRONIC_NS) \
+	    --set nodeName=$(PROVISION_NODE) --set driver=fake-hardware \
+	    --set instance_info.image_source=http://example.invalid/image.qcow2 \
+	    --set instance_info.image_checksum=0 >/dev/null; \
+	  st=$$($(KUBECTL) -n $(IRONIC_NS) get node.baremetal.ogen.krateo.io $(PROVISION_NODE) -o jsonpath='{.status.provision_state}' 2>/dev/null); \
+	  echo "reconcile $$i: $(PROVISION_NODE) provision_state=$$st"; \
+	  [ "$$st" = "active" ] && { echo "server provisioned (active)"; break; }; \
+	  sleep 12; \
+	done
 
 local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinition
 
