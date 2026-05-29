@@ -10,8 +10,8 @@
     },
     "driver": {
       "type": "string",
-      "enum": ["ipmi", "redfish"],
-      "description": "Ironic driver for BMC management"
+      "enum": ["ipmi", "redfish", "fake-hardware"],
+      "description": "Ironic driver for BMC management (fake-hardware for local testing)"
     },
     "driver_info": {
       "type": "object",

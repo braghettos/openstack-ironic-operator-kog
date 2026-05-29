@@ -2,8 +2,10 @@
 # and deploy rest-dynamic-controller. Requires ConfigMap ironic-node-oas with OAS.
 #
 # Apply order:
-#   1. kubectl create configmap ironic-node-oas -n openstack --from-file=ironic-node.yaml=../oas/ironic-node.yaml
+#   1. kubectl create configmap ironic-node-oas -n openstack --from-file=ironic_node.yaml=../oas/ironic-node.yaml
 #   2. kubectl apply -f restdefinition-node.yaml
+# Note: the configmap key uses '_' (not '-') because KOG's oasPath regex disallows
+# hyphens in the filename segment.
 ---
 apiVersion: ogen.krateo.io/v1alpha1
 kind: RestDefinition
@@ -11,7 +13,7 @@ metadata:
   name: ironic-node
   namespace: openstack
 spec:
-  oasPath: configmap://openstack/ironic-node-oas/ironic-node.yaml
+  oasPath: configmap://openstack/ironic-node-oas/ironic_node.yaml
   resourceGroup: baremetal.ogen.krateo.io
   resource:
     kind: Node
@@ -30,6 +32,11 @@ spec:
           in: header
         fromRestDefinition:
           actions: ["*"]
+      - fromOpenAPI:
+          name: X-OpenStack-Ironic-API-Version
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
     verbsDescription:
       - action: findby
         method: GET
@@ -39,8 +46,11 @@ spec:
         method: GET
         path: /v1/nodes/{uuid}
         requestFieldMapping:
+          # Ironic accepts the node NAME as the {ident} in /v1/nodes/{ident}, so map the
+          # path param to spec.name (always known) instead of the uuid (unknown until
+          # after create). This makes observe = GET /v1/nodes/<name> -> 404 (create) or 200.
           - inPath: uuid
-            inCustomResource: status.metadata.uuid
+            inCustomResource: spec.name
       - action: create
         method: POST
         path: /v1/nodes
@@ -48,11 +58,17 @@ spec:
         method: PATCH
         path: /v1/nodes/{uuid}
         requestFieldMapping:
+          # Ironic accepts the node NAME as the {ident} in /v1/nodes/{ident}, so map the
+          # path param to spec.name (always known) instead of the uuid (unknown until
+          # after create). This makes observe = GET /v1/nodes/<name> -> 404 (create) or 200.
           - inPath: uuid
-            inCustomResource: status.metadata.uuid
+            inCustomResource: spec.name
       - action: delete
         method: DELETE
         path: /v1/nodes/{uuid}
         requestFieldMapping:
+          # Ironic accepts the node NAME as the {ident} in /v1/nodes/{ident}, so map the
+          # path param to spec.name (always known) instead of the uuid (unknown until
+          # after create). This makes observe = GET /v1/nodes/<name> -> 404 (create) or 200.
           - inPath: uuid
-            inCustomResource: status.metadata.uuid
+            inCustomResource: spec.name

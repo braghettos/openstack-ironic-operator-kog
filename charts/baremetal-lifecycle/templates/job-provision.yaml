@@ -65,7 +65,7 @@ spec:
               {{- $mac := "" }}{{- if kindIs "map" . }}{{ $mac = .address | default "" }}{{- else if kindIs "string" . }}{{ $mac = . }}{{- end }}
               {{- if $mac }}
               openstack baremetal port list --node "$UUID" -f value -c Address 2>/dev/null | grep -qix {{ $mac | quote }} \
-                || openstack baremetal port create --node "$UUID" --address {{ $mac | quote }}
+                || openstack baremetal port create --node "$UUID" {{ $mac | quote }}
               {{- end }}
               {{- end }}
 
