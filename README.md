@@ -3,13 +3,21 @@
 Provision bare metal servers with OpenStack Ironic using Krateo's dynamic controllers
 instead of a hand-written operator.
 
-- **KOG (Krateo Operator Generator)** — `oasgen-provider` + a `RestDefinition` generate a
-  `Node` CRD and a `rest-dynamic-controller` that does Node CRUD against the Ironic API.
+- **KOG (Krateo Operator Generator)** — `oasgen-provider` + RestDefinitions generate CRDs and
+  `rest-dynamic-controller`s that talk to the Ironic API. Two RestDefinitions, each adherent to
+  the Ironic API:
+  - **`Node`** → CRUD on `/v1/nodes` (`manifests/restdefinition-node.yaml`).
+  - **`NodeProvision`** → the provision action `PUT /v1/nodes/{id}/states/provision`
+    (`manifests/restdefinition-provision.yaml`). Creating a `NodeProvision` fires the PUT once
+    (a `202` sets a Pending condition that prevents re-firing).
 - **Composition** — `core-provider` + a `CompositionDefinition` run the
-  `charts/baremetal-lifecycle` Helm chart. The chart renders the `Node` CR plus a single,
-  idempotent **provisioner Job** that drives the standalone Ironic provision state machine
-  (`enroll → manage → [inspect] → provide → deploy`) and stops at `active`. The composition
-  *is* the orchestrator — there is no separate middleware service.
+  `charts/baremetal-lifecycle` Helm chart. The state machine is modeled as **one custom
+  resource per state**: the chart renders the `Node` CR plus a single `NodeProvision` CR for the
+  node's *current* `provision_state`, selected by the Helm `lookup` function. **composition-dynamic-controller
+  re-evaluates `lookup` on every reconcile**, rendering the next transition and pruning the
+  previous one, walking `enroll → manage → manageable → provide → available → deploy → active`.
+  The composition *is* the orchestrator (no CLI, no middleware service); all transitions go
+  through the Ironic API via KOG.
 
 ## Free local test environment
 
@@ -36,9 +44,12 @@ All `kubectl`/`helm` use an isolated kubeconfig (`local/kubeconfig.ironic-kog`) 
 | Path | Description |
 |------|-------------|
 | `oas/ironic-node.yaml` | OpenAPI spec for Node CRUD (KOG input) |
-| `manifests/restdefinition-node.yaml` | RestDefinition consumed by oasgen-provider |
+| `oas/ironic-provision.yaml` | OpenAPI spec for the provision action (KOG input) |
+| `manifests/restdefinition-node.yaml` | RestDefinition: Node CRUD |
+| `manifests/restdefinition-provision.yaml` | RestDefinition: NodeProvision action |
 | `manifests/compositiondefinition-baremetal-lifecycle.yaml` | CompositionDefinition for core-provider |
-| `charts/baremetal-lifecycle/` | Helm chart: Node CR + NodeConfiguration + provisioner Job |
+| `manifests/baremetallifecycle-example.yaml` | Example composition instance |
+| `charts/baremetal-lifecycle/` | Helm chart: Node + NodeConfiguration + per-state NodeProvision CRs |
 | `local/` | Free local env (kind config, standalone Ironic, kubeconfig isolation) |
 | `deploy/` | openstack-helm Ironic deployment (full stack, for real clusters) |
 | `scripts/` | OAS ConfigMap creation, Ironic smoke test |
@@ -50,22 +61,41 @@ Local env: `local-up`, `krateo-up`, `restdef-up`, `ironic-up`, `provision-demo`,
 
 Chart/packaging: `package-chart`, `template-chart`, `validate-chart`.
 
-## Using the Krateo composition (CompositionDefinition)
+## Driving it with composition-dynamic-controller
 
-`make provision-demo` deploys the chart directly (what composition-dynamic-controller does
-under the hood). To drive it through a `CompositionDefinition`:
+This is the real flow (the state machine is lookup-driven, so it needs the controller's
+repeated reconciles — a single `helm install` only advances one step):
 
-1. `make package-chart` → `dist/baremetal-lifecycle-0.1.0.tgz`
-2. Publish the `.tgz` (HTTP URL or `oci://…`) and set `spec.chart.url` in
-   `manifests/compositiondefinition-baremetal-lifecycle.yaml`
-3. `kubectl apply -f manifests/compositiondefinition-baremetal-lifecycle.yaml`, then create a
-   Composition CR with your node values.
+```bash
+make composition-up    # package + host the chart, apply the CompositionDefinition
+make composition-demo  # create a BaremetalLifecycle instance; cdc walks it to active
+# watch:
+kubectl -n openstack get node.baremetal.ogen.krateo.io metal-a -o jsonpath='{.status.provision_state}'
+```
+
+`composition-up` serves the chart from an in-cluster nginx (`make chart-host`) and points the
+CompositionDefinition at it; `core-provider` then generates a `BaremetalLifecycle` CRD +
+controller. For a real cluster, publish the `.tgz` (`make package-chart`) to HTTP/OCI and set
+`spec.chart.url` in `manifests/compositiondefinition-baremetal-lifecycle.yaml`.
+
+> Pacing: progression is gated by KOG's Node-controller status resync (~tens of seconds per
+> state), so a full enroll→active walk takes a few minutes against the fake driver.
+
+`make provision-demo` is a lighter alternative that simulates reconciles with repeated
+`helm upgrade` (no CompositionDefinition needed).
 
 ## Troubleshooting
 
-**Provisioner Job stuck waiting for the node** — the Node CR must sync to Ironic first.
-Check the controller: `kubectl -n openstack logs deploy/ironic-node-controller`. The Node CR
-should be `Synced=True`.
+**State machine not progressing** — the transitions are gated by `lookup` of the Node CR's
+`status.provision_state`. If the Node CR is in `Synced=ReconcileError`, status stops updating
+and the walk stalls. Check `kubectl -n openstack get node.baremetal.ogen.krateo.io <name>
+-o jsonpath='{.status.conditions}'`. (This is why the Node RestDefinition has no `update` verb —
+Ironic PATCH is JSON-Patch-only and 400s.) Otherwise it's just slow (KOG status resync ~tens of
+seconds per state).
+
+**NodeProvision fires the PUT repeatedly** — it shouldn't; the `202` Pending condition guards
+re-firing. Ensure the OAS provision response is `202` and there is no `get` verb on the
+NodeProvision RestDefinition.
 
 **Node CR `create failed: 406`** — Ironic needs the microversion header; ensure the nginx
 sidecar is running (`kubectl -n openstack get pod -l app=ironic` shows 2/2) or that the

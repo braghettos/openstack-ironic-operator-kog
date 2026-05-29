@@ -38,11 +38,13 @@ kind-ironic-kog`, so your default `~/.kube/config` is never modified.
 ## Usage
 
 ```bash
-make local-up        # kind + standalone Ironic + Krateo (KOG + core) + RestDefinition
-make provision-demo  # composition provisions sample node 'server01' -> active
-make smoke-test      # drive a fake node enroll -> active directly (no Krateo; CLEANUP=1 to delete)
-make ironic-forward  # expose the API at http://localhost:6385 (separate shell)
-make local-down      # delete the kind cluster
+make local-up          # kind + standalone Ironic + Krateo (KOG + core) + both RestDefinitions
+make composition-up    # host the chart + install the CompositionDefinition (real cdc path)
+make composition-demo  # create a BaremetalLifecycle instance; cdc walks node 'metal-a' -> active
+make provision-demo    # alt: provision 'server01' via simulated reconciles (repeated helm upgrade)
+make smoke-test        # alt: drive a fake node enroll -> active directly (no Krateo)
+make ironic-forward    # expose the API at http://localhost:6385 (separate shell)
+make local-down        # delete the kind cluster
 ```
 
 Manual API access (after `make ironic-forward`):
