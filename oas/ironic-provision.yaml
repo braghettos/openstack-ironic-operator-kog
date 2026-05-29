@@ -1,0 +1,84 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Node provisioning action.
+# Models PUT /v1/nodes/{node_id}/states/provision as a KOG "create" (fire-once via 202),
+# with GET /v1/nodes/{node_id} and GET /v1/nodes for observe (get/findby).
+# Ref: https://docs.openstack.org/api-ref/baremetal/#change-node-provision-state
+openapi: 3.0.3
+info:
+  title: Ironic Node Provisioning
+  description: Provision-state transitions for a bare metal node (one CR per transition)
+  version: 1.0.0
+
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (standalone, noauth; nginx sidecar injects the microversion)
+
+paths:
+  /v1/nodes:
+    get:
+      summary: List nodes (findby)
+      operationId: listNodes
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeState'
+
+  /v1/nodes/{node_id}/states/provision:
+    put:
+      summary: Set provision target (create = fire-once transition)
+      operationId: setProvisionState
+      parameters:
+        - $ref: '#/components/parameters/node_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionTarget'
+      responses:
+        '202':
+          description: Accepted (async; empty body)
+
+components:
+  parameters:
+    node_id:
+      name: node_id
+      in: path
+      required: true
+      description: Node UUID or name
+      schema:
+        type: string
+  schemas:
+    ProvisionTarget:
+      type: object
+      required:
+        - target
+      properties:
+        target:
+          type: string
+          description: manage | provide | active | deleted | inspect | rebuild
+        configdrive:
+          type: object
+          additionalProperties: true
+    NodeState:
+      type: object
+      properties:
+        uuid:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        provision_state:
+          type: string
+          readOnly: true
+        target_provision_state:
+          type: string
+          readOnly: true

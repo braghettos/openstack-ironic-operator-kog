@@ -1,0 +1,42 @@
+# RestDefinition for the Ironic provision-state action (one CR per transition).
+# KOG generates a NodeProvision CRD + rest-dynamic-controller. Creating a NodeProvision CR
+# fires PUT /v1/nodes/{node_id}/states/provision once (202 -> Pending guard prevents re-fire).
+#
+# Apply order:
+#   1. kubectl create configmap ironic-provision-oas -n openstack --from-file=provision.yaml=../oas/ironic-provision.yaml
+#   2. kubectl apply -f restdefinition-provision.yaml
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-node-provision
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-provision-oas/provision.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: NodeProvision
+    # node_id is the human-friendly id the caller sets (node name or uuid). It is NOT a real
+    # field on listed nodes, so findby never matches -> first Observe -> Create (the PUT). The
+    # 202 Pending condition then makes subsequent Observe report exists -> the PUT fires once.
+    identifiers:
+      - node_id
+    additionalStatusFields:
+      - uuid
+      - provision_state
+      - target_provision_state
+    verbsDescription:
+      # No `get` verb: IsResourceKnown can't build a get call -> Observe uses findby. findby
+      # matches on node_id, which is not a field on listed nodes, so it never matches ->
+      # ResourceExists=false on first Observe -> Create (the PUT) fires. The 202 sets a Pending
+      # condition that makes later Observes report exists, so the PUT fires exactly once.
+      - action: findby
+        method: GET
+        path: /v1/nodes
+        identifiersMatchPolicy: OR
+      - action: create
+        method: PUT
+        path: /v1/nodes/{node_id}/states/provision
+        requestFieldMapping:
+          - inPath: node_id
+            inCustomResource: spec.node_id
