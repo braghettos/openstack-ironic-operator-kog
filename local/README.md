@@ -19,6 +19,13 @@ With the fake drivers the full provision state machine runs without any real har
 `enroll → manage → manageable → inspect → manageable → provide → available → (set
 instance_info) → active`.
 
+An **nginx sidecar** fronts the Ironic API and injects a default
+`X-OpenStack-Ironic-API-Version` header when the client doesn't send one. Standalone Ironic
+returns HTTP 406 on write requests that omit the microversion, and KOG's
+rest-dynamic-controller doesn't send it; the sidecar supplies a default while preserving any
+client-provided version (e.g. from the provisioner Job's `openstack` CLI). The `ironic`
+Service points at the sidecar.
+
 > Note: the image is amd64-only; on Apple Silicon it runs under Docker Desktop's shared
 > qemu emulation inside the kind node (validated working).
 
@@ -31,8 +38,9 @@ kind-ironic-kog`, so your default `~/.kube/config` is never modified.
 ## Usage
 
 ```bash
-make local-up        # create kind cluster + deploy standalone Ironic
-make smoke-test      # drive a fake node enroll -> active (CLEANUP=1 deletes it after)
+make local-up        # kind + standalone Ironic + Krateo (KOG + core) + RestDefinition
+make provision-demo  # composition provisions sample node 'server01' -> active
+make smoke-test      # drive a fake node enroll -> active directly (no Krateo; CLEANUP=1 to delete)
 make ironic-forward  # expose the API at http://localhost:6385 (separate shell)
 make local-down      # delete the kind cluster
 ```
@@ -48,5 +56,5 @@ curl -s -H "X-OpenStack-Ironic-API-Version: 1.81" http://localhost:6385/v1/nodes
 | File | Purpose |
 |------|---------|
 | `ironic.conf` | Standalone Ironic config (noauth, sqlite, fake drivers) |
-| `ironic-standalone.yaml` | Namespace + Deployment + Service for in-cluster Ironic |
+| `ironic-standalone.yaml` | Namespace + Ironic Deployment (with nginx version-proxy sidecar) + Service |
 | `kubeconfig.ironic-kog` | Isolated kubeconfig (generated, gitignored) |
