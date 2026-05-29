@@ -9,7 +9,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: http://ironic-api.openstack.svc.cluster.local:6385
+  - url: http://ironic.openstack.svc.cluster.local:6385
     description: Ironic API (override via NodeConfiguration)
 
 paths:
@@ -17,16 +17,12 @@ paths:
     get:
       summary: List nodes
       operationId: listNodes
+      # No query filters: Ironic's node list rejects ?name=/?provision_state=
+      # ("Unexpected arguments"). rest-dynamic-controller lists all nodes and matches
+      # the `name` identifier client-side (findby identifiersMatchPolicy).
       parameters:
         - $ref: '#/components/parameters/X-Ironic-Endpoint'
-        - name: name
-          in: query
-          schema:
-            type: string
-        - name: provision_state
-          in: query
-          schema:
-            type: string
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
       responses:
         '200':
           description: List of nodes
@@ -42,6 +38,9 @@ paths:
     post:
       summary: Create node
       operationId: createNode
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
       requestBody:
         required: true
         content:
@@ -67,6 +66,9 @@ paths:
     get:
       summary: Get node by UUID
       operationId: getNode
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
       responses:
         '200':
           description: Node details
@@ -79,6 +81,9 @@ paths:
     patch:
       summary: Update node
       operationId: updateNode
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
       requestBody:
         content:
           application/json:
@@ -94,6 +99,9 @@ paths:
     delete:
       summary: Delete node
       operationId: deleteNode
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
       responses:
         '204':
           description: Node deleted
@@ -107,6 +115,13 @@ components:
       in: header
       required: false
       description: Override Ironic API base URL (used by NodeConfiguration)
+      schema:
+        type: string
+    X-OpenStack-Ironic-API-Version:
+      name: X-OpenStack-Ironic-API-Version
+      in: header
+      required: false
+      description: Ironic API microversion (Ironic rejects write requests without it). Set via NodeConfiguration.
       schema:
         type: string
   schemas:

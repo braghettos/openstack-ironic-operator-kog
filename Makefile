@@ -22,9 +22,11 @@ help:
 	@echo "  validate-chart - Verify Node CR and Job templates render"
 	@echo "  deploy-ironic  - Helm install Ironic with overrides (req: openstack-helm repo, backends)"
 	@echo "Local test env (isolated kind cluster, never touches ~/.kube/config):"
-	@echo "  local-up       - Create kind cluster + Ironic + Krateo providers"
+	@echo "  local-up       - Full local stack: kind + Ironic + Krateo + RestDefinition"
 	@echo "  krateo-up      - Install Krateo KOG (oasgen) + composition (core) providers"
+	@echo "  restdef-up     - Apply OAS ConfigMap + RestDefinition (generates Node CRD)"
 	@echo "  ironic-up      - (Re)deploy standalone Ironic into the kind cluster"
+	@echo "  provision-demo - Run the composition to provision a sample fake node -> active"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
 	@echo "  local-down     - Delete the local kind cluster"
@@ -110,7 +112,20 @@ krateo-up:    # install Krateo KOG (oasgen-provider) + composition engine (core-
 		-n krateo-system --version $(KRATEO_OASGEN_VERSION) --wait --timeout 6m
 	$(KUBECTL) -n krateo-system get pods
 
-local-up: kind-up ironic-up krateo-up   # create kind cluster + Ironic + Krateo providers
+restdef-up:   # apply the OAS ConfigMap + RestDefinition (KOG generates the Node CRD + controller)
+	KUBECTL="$(KUBECTL)" ./scripts/create-ironic-oas-configmap.sh $(IRONIC_NS)
+	$(KUBECTL) apply -f manifests/restdefinition-node.yaml
+	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node --timeout=180s
+
+provision-demo: # run the composition to provision a sample fake node -> active
+	$(HELMK) upgrade --install baremetal-lifecycle ./charts/baremetal-lifecycle -n $(IRONIC_NS) \
+		--set nodeName=server01 --set driver=fake-hardware \
+		--set instance_info.image_source=http://example.invalid/image.qcow2 \
+		--set instance_info.image_checksum=0 \
+		--set ports[0].address=9c:b6:54:b2:b0:ca --timeout 8m
+	$(KUBECTL) -n $(IRONIC_NS) logs job/ironic-provision-baremetal-lifecycle --tail=5
+
+local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinition
 
 local-down:   # delete the whole local kind cluster
 	-kind delete cluster --name $(KIND_CLUSTER) --kubeconfig $(KUBECONFIG_FILE)

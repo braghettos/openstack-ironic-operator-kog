@@ -15,9 +15,9 @@ metadata:
     app.kubernetes.io/name: baremetal-lifecycle
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
-  {{- if .Values.configurationRef }}
-  configurationRef: {{- toYaml .Values.configurationRef | nindent 4 }}
-  {{- end }}
+  configurationRef:
+    name: {{ include "baremetal-lifecycle.configName" . }}
+    namespace: {{ include "baremetal-lifecycle.nodeNamespace" . }}
   name: {{ .Values.nodeName }}
   driver: {{ .Values.driver }}
   driver_info: {{- toYaml .Values.driver_info | nindent 4 }}

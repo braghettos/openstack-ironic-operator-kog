@@ -2,11 +2,41 @@
 # Uses the official openstack-helm image (quay.io/airshipit/ironic) with the combined
 # `ironic` binary (api+conductor), SQLite, noauth, json-rpc and fake-hardware drivers.
 # The ironic.conf is supplied via the `ironic-config` ConfigMap (created from local/ironic.conf).
+#
+# An nginx sidecar fronts the API and injects a default X-OpenStack-Ironic-API-Version
+# header when the client doesn't send one. Standalone Ironic rejects write requests that
+# omit the microversion header (HTTP 406), and KOG's rest-dynamic-controller does not send
+# it - so the sidecar supplies a sane default while preserving any client-provided version
+# (e.g. from the provisioner Job's openstack CLI). The Service points at the sidecar.
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: openstack
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ironic-proxy-nginx
+  namespace: openstack
+data:
+  nginx.conf: |
+    events {}
+    http {
+      # Preserve a client-sent microversion; default to 1.81 when absent.
+      map $http_x_openstack_ironic_api_version $ver {
+        default $http_x_openstack_ironic_api_version;
+        ''      '1.81';
+      }
+      server {
+        listen 8080;
+        location / {
+          proxy_pass http://127.0.0.1:6385;
+          proxy_set_header Host $http_host;
+          proxy_set_header X-OpenStack-Ironic-API-Version $ver;
+        }
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,7 +67,7 @@ spec:
               /var/lib/openstack/bin/ironic-dbsync --config-file /etc/ironic/ironic.conf create_schema || true
               exec /var/lib/openstack/bin/ironic --config-file /etc/ironic/ironic.conf
           ports:
-            - name: api
+            - name: ironic-api
               containerPort: 6385
           readinessProbe:
             httpGet:
@@ -52,10 +82,28 @@ spec:
             - name: config
               mountPath: /etc/ironic/ironic.conf
               subPath: ironic.conf
+        - name: version-proxy
+          image: nginx:1.27-alpine
+          ports:
+            - name: api
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /v1/nodes
+              port: 8080
+            initialDelaySeconds: 12
+            periodSeconds: 5
+          volumeMounts:
+            - name: nginx
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
       volumes:
         - name: config
           configMap:
             name: ironic-config
+        - name: nginx
+          configMap:
+            name: ironic-proxy-nginx
 ---
 apiVersion: v1
 kind: Service
@@ -70,4 +118,4 @@ spec:
   ports:
     - name: api
       port: 6385
-      targetPort: 6385
+      targetPort: 8080
