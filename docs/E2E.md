@@ -1,82 +1,61 @@
 # End-to-End Validation
 
-## Prerequisites
+Validated locally with `kind` + standalone Ironic (fake-hardware) — no real hardware.
 
-- Kubernetes cluster with Ironic deployed (see `deploy/README.md`)
-- oasgen-provider and rest-dynamic-controller installed
-- Node CRD generated from RestDefinition
-
-## Validation Steps
-
-### 1. Validate Chart Templates
+## 1. Bring up the stack
 
 ```bash
-make validate-chart
+make local-up
 ```
 
-Or manually:
+This creates the kind cluster `ironic-kog`, deploys standalone Ironic (official
+openstack-helm image, fake drivers, noauth, + version-injecting nginx sidecar), installs
+Krateo (`oasgen-provider` + `core-provider`), and applies the RestDefinition.
+
+Check:
 
 ```bash
-make template-chart
+KCTL="kubectl --kubeconfig local/kubeconfig.ironic-kog --context kind-ironic-kog"
+$KCTL -n krateo-system get pods                      # providers Running
+$KCTL -n openstack get restdefinition ironic-node    # READY=True
+$KCTL get crd | grep baremetal                       # nodes + nodeconfigurations CRDs
+$KCTL -n openstack get deploy ironic-node-controller # rest-dynamic-controller Running
 ```
 
-Verify output contains:
-- `apiVersion: baremetal.ogen.krateo.io/v1alpha1`
-- `kind: Node`
-- Node spec with driver, driver_info
-
-### 2. Deploy Ironic Stack
+## 2. Provision a server via the composition
 
 ```bash
-./deploy/deploy-ironic-stack.sh
+make provision-demo
 ```
 
-Or follow `deploy/README.md` step-by-step.
+This installs `charts/baremetal-lifecycle` for node `server01`. The chart renders:
+- a `NodeConfiguration` (Ironic endpoint + microversion headers),
+- a `Node` CR — KOG's rest-dynamic-controller creates the node in Ironic (`enroll`),
+- a provisioner Job — drives `enroll → manage → provide → deploy → active`.
 
-### 3. Apply RestDefinition
+## 3. Observe
 
 ```bash
-make apply-oas    # Creates OAS ConfigMap
-make apply-restdef # Applies RestDefinition, deploys rest-dynamic-controller
+KCTL="kubectl --kubeconfig local/kubeconfig.ironic-kog --context kind-ironic-kog"
+$KCTL -n openstack logs job/ironic-provision-baremetal-lifecycle   # "...server01 is active"
+$KCTL -n openstack get node.baremetal.ogen.krateo.io server01      # Synced=True
+
+# node state in Ironic:
+$KCTL -n openstack exec deploy/ironic -c ironic -- \
+  curl -s -H "X-OpenStack-Ironic-API-Version: 1.81" http://127.0.0.1:6385/v1/nodes \
+  | jq -r '.nodes[] | .name+"  "+.provision_state'
+# -> server01  active
 ```
 
-Wait for rest-dynamic-controller to be ready. Check Node CRD:
+The provisioner Job is idempotent and forward-only: re-running it on an already-`active`
+node is a no-op (it never undeploys).
+
+## API-only smoke test (no Krateo)
 
 ```bash
-kubectl get crd | grep baremetal
-```
-
-### 4. Deploy baremetal-lifecycle Chart
-
-```bash
-helm upgrade --install baremetal-lifecycle ./charts/baremetal-lifecycle \
-  -n default \
-  --set nodeName=my-baremetal-node \
-  --set driver_info.ipmi_address=172.19.74.202 \
-  --set driver_info.ipmi_username=admin \
-  --set driver_info.ipmi_password=secret
-```
-
-### 5. Observe State Transitions
-
-1. **Node CR created** – rest-dynamic-controller syncs to Ironic
-2. **Job ironic-manage-*** – runs when `provision_state` is `enroll`
-3. **Job ironic-provide-*** (or inspect first) – after manageable
-4. **Job ironic-deploy-*** – when available (requires instance_info)
-
-```bash
-kubectl get nodes.baremetal.ogen.krateo.io -A
-kubectl get jobs -A -l app.kubernetes.io/name=baremetal-lifecycle
-kubectl logs job/ironic-manage-baremetal-lifecycle -f
-```
-
-### 6. Verify Node Status
-
-```bash
-kubectl get node <name> -o yaml
-# Check status.provision_state, status.metadata.uuid
+make smoke-test   # drives a fake node enroll->active directly via the Ironic API
 ```
 
 ## Troubleshooting
 
-See `README.md` Troubleshooting section.
+See the Troubleshooting section in the top-level `README.md`.
