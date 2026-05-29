@@ -155,6 +155,27 @@ composition-demo: # create a BaremetalLifecycle instance; composition-dynamic-co
 	$(KUBECTL) apply -f manifests/baremetallifecycle-example.yaml
 	@echo "watch: $(KUBECTL) -n $(IRONIC_NS) get node.baremetal.ogen.krateo.io metal-a -o jsonpath='{.status.provision_state}'"
 
+# --- Real Ironic (OpenMetal) via a Keystone-auth proxy --------------------------
+# Point the operator at a real, Keystone-protected Ironic without changing the operator: a proxy
+# authenticates with your clouds.yaml and the `ironic` Service is repointed at it.
+CLOUDS_FILE ?= clouds.yaml
+OS_CLOUD ?= openstack
+
+openmetal-proxy-up: # deploy the Keystone-auth proxy and point the `ironic` Service at OpenMetal
+	@test -f "$(CLOUDS_FILE)" || { echo "ERROR: set CLOUDS_FILE=<path to clouds.yaml> (got '$(CLOUDS_FILE)')"; exit 1; }
+	$(KUBECTL) -n $(IRONIC_NS) create secret generic openmetal-clouds \
+		--from-file=clouds.yaml="$(CLOUDS_FILE)" --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) -n $(IRONIC_NS) create configmap openmetal-proxy-script \
+		--from-file=openmetal-ironic-proxy.py=scripts/openmetal-ironic-proxy.py --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) apply -f manifests/openmetal-ironic-proxy.yaml
+	$(KUBECTL) -n $(IRONIC_NS) set env deploy/openmetal-ironic-proxy OS_CLOUD=$(OS_CLOUD)
+	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/openmetal-ironic-proxy --timeout=150s
+	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"openmetal-ironic-proxy"}}}'
+	@echo "ironic Service -> OpenMetal proxy. Operator endpoint (OAS) unchanged."
+
+openmetal-down: # repoint the `ironic` Service back at the local fake Ironic
+	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"ironic"}}}'
+
 local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinitions
 
 local-down:   # delete the whole local kind cluster
