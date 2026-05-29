@@ -3,3 +3,8 @@ dist/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 local/kubeconfig*
+# OpenStack credentials - never commit
+clouds.yaml
+*clouds*.yaml
+*openrc*
+*.rc
