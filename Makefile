@@ -24,9 +24,11 @@ help:
 	@echo "Local test env (isolated kind cluster, never touches ~/.kube/config):"
 	@echo "  local-up       - Full local stack: kind + Ironic + Krateo + RestDefinition"
 	@echo "  krateo-up      - Install Krateo KOG (oasgen) + composition (core) providers"
-	@echo "  restdef-up     - Apply OAS ConfigMap + RestDefinition (generates Node CRD)"
+	@echo "  restdef-up     - Apply OAS ConfigMaps + both RestDefinitions (Node + NodeProvision)"
 	@echo "  ironic-up      - (Re)deploy standalone Ironic into the kind cluster"
-	@echo "  provision-demo - Run the composition to provision a sample fake node -> active"
+	@echo "  provision-demo - Provision a sample fake node -> active (simulated reconciles via helm)"
+	@echo "  composition-up - Host the chart + install the CompositionDefinition (real cdc path)"
+	@echo "  composition-demo - Create a BaremetalLifecycle instance; cdc walks it to active"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
 	@echo "  local-down     - Delete the local kind cluster"
@@ -137,7 +139,23 @@ provision-demo:
 	  sleep 12; \
 	done
 
-local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinition
+chart-host:   # package the baremetal-lifecycle chart and serve it in-cluster (for the CompositionDefinition)
+	helm package charts/baremetal-lifecycle -d dist/
+	$(KUBECTL) -n $(IRONIC_NS) create deployment chartrepo --image=nginx:1.27-alpine --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) -n $(IRONIC_NS) expose deployment chartrepo --port=80 --dry-run=client -o yaml | $(KUBECTL) apply -f - 2>/dev/null || true
+	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/chartrepo --timeout=120s
+	$(KUBECTL) -n $(IRONIC_NS) cp dist/baremetal-lifecycle-0.1.0.tgz \
+		$$($(KUBECTL) -n $(IRONIC_NS) get pod -l app=chartrepo -o jsonpath='{.items[0].metadata.name}'):/usr/share/nginx/html/baremetal-lifecycle-0.1.0.tgz
+
+composition-up: chart-host   # install the CompositionDefinition (core-provider generates the BaremetalLifecycle CRD)
+	$(KUBECTL) apply -f manifests/compositiondefinition-baremetal-lifecycle.yaml
+	$(KUBECTL) -n krateo-system wait --for=condition=Ready compositiondefinition/baremetal-lifecycle --timeout=180s
+
+composition-demo: # create a BaremetalLifecycle instance; composition-dynamic-controller walks it enroll -> active
+	$(KUBECTL) apply -f manifests/baremetallifecycle-example.yaml
+	@echo "watch: $(KUBECTL) -n $(IRONIC_NS) get node.baremetal.ogen.krateo.io metal-a -o jsonpath='{.status.provision_state}'"
+
+local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinitions
 
 local-down:   # delete the whole local kind cluster
 	-kind delete cluster --name $(KIND_CLUSTER) --kubeconfig $(KUBECONFIG_FILE)

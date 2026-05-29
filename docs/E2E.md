@@ -22,38 +22,42 @@ $KCTL get crd | grep baremetal                       # nodes + nodeconfiguration
 $KCTL -n openstack get deploy ironic-node-controller # rest-dynamic-controller Running
 ```
 
-## 2. Provision a server via the composition
+## 2. Provision a server through composition-dynamic-controller
 
 ```bash
-make provision-demo
+make composition-up    # package + host the chart, apply the CompositionDefinition
+make composition-demo  # create a BaremetalLifecycle instance (node metal-a)
 ```
 
-This installs `charts/baremetal-lifecycle` for node `server01`. The chart renders:
-- a `NodeConfiguration` (Ironic endpoint + microversion headers),
-- a `Node` CR — KOG's rest-dynamic-controller creates the node in Ironic (`enroll`),
-- a provisioner Job — drives `enroll → manage → provide → deploy → active`.
+`core-provider` generates a `BaremetalLifecycle` CRD; composition-dynamic-controller reconciles
+the instance, helm-rendering the chart each reconcile. The chart renders, by `lookup` of the
+Node's current `provision_state`, exactly one `NodeProvision` CR per state:
+`enroll → manage`, `manageable → provide`, `available → active`. Each `NodeProvision` fires
+`PUT /v1/nodes/{node}/states/provision` once (via the ironic-node-provision RestDefinition).
 
 ## 3. Observe
 
 ```bash
 KCTL="kubectl --kubeconfig local/kubeconfig.ironic-kog --context kind-ironic-kog"
-$KCTL -n openstack logs job/ironic-provision-baremetal-lifecycle   # "...server01 is active"
-$KCTL -n openstack get node.baremetal.ogen.krateo.io server01      # Synced=True
+$KCTL -n openstack get baremetallifecycle metal-a                      # composition instance
+$KCTL -n openstack get nodeprovision                                   # current transition CR
+$KCTL -n openstack get node.baremetal.ogen.krateo.io metal-a -o jsonpath='{.status.provision_state}'
 
-# node state in Ironic:
+# node state in Ironic (walks enroll -> manageable -> available -> active):
 $KCTL -n openstack exec deploy/ironic -c ironic -- \
-  curl -s -H "X-OpenStack-Ironic-API-Version: 1.81" http://127.0.0.1:6385/v1/nodes \
-  | jq -r '.nodes[] | .name+"  "+.provision_state'
-# -> server01  active
+  curl -s -H "X-OpenStack-Ironic-API-Version: 1.81" http://127.0.0.1:6385/v1/nodes/metal-a \
+  | jq -r .provision_state
+# -> active
 ```
 
-The provisioner Job is idempotent and forward-only: re-running it on an already-`active`
-node is a no-op (it never undeploys).
+Progression is paced by KOG's Node-controller status resync (a few minutes total against the
+fake driver). Each NodeProvision fires its PUT exactly once (202 -> Pending guard).
 
-## API-only smoke test (no Krateo)
+## Lighter alternatives (no CompositionDefinition)
 
 ```bash
-make smoke-test   # drives a fake node enroll->active directly via the Ironic API
+make provision-demo   # simulate reconciles with repeated `helm upgrade` until active
+make smoke-test       # drive a fake node enroll->active directly via the Ironic API (no Krateo)
 ```
 
 ## Troubleshooting

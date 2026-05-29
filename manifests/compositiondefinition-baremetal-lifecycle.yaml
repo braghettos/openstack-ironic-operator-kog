@@ -1,12 +1,11 @@
-# CompositionDefinition for baremetal-lifecycle chart
-# Used by core-provider to deploy composition-dynamic-controller.
+# CompositionDefinition for the baremetal-lifecycle chart. core-provider consumes this and
+# generates a BaremetalLifecycle CRD + a composition-dynamic-controller that helm-installs the
+# chart per instance and reconciles it (re-evaluating the chart's `lookup` each reconcile to
+# render the per-state NodeProvision transitions).
 #
-# Prerequisites:
-#   1. Package the chart: make package-chart
-#   2. Publish the .tgz to a URL (HTTP, OCI, or Helm repo)
-#   3. Update spec.chart.url below to point to the published chart
-#
-# Then: kubectl apply -f manifests/compositiondefinition-baremetal-lifecycle.yaml
+# The url below points at the in-cluster chart server used by the local env (`make composition-up`
+# packages the chart and serves it). For a real cluster, publish the .tgz (HTTP/OCI/Helm repo)
+# and set spec.chart.url accordingly.
 ---
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
@@ -15,6 +14,5 @@ metadata:
   namespace: krateo-system
 spec:
   chart:
-    # Replace with your published chart URL (e.g. OCI or tgz)
-    url: https://example.com/baremetal-lifecycle-0.1.0.tgz
+    url: http://chartrepo.openstack.svc.cluster.local/baremetal-lifecycle-0.1.0.tgz
     version: "0.1.0"
