@@ -84,6 +84,13 @@ controller. For a real cluster, publish the `.tgz` (`make package-chart`) to HTT
 `make provision-demo` is a lighter alternative that simulates reconciles with repeated
 `helm upgrade` (no CompositionDefinition needed).
 
+## Against a real Ironic API
+
+To run the operator against a real, Keystone-protected Ironic (e.g. an OpenMetal hosted cloud), a
+small auth proxy authenticates with your `clouds.yaml` and the operator points at it unchanged:
+`make openmetal-proxy-up CLOUDS_FILE=clouds.yaml OS_CLOUD=<name>`. Full step-by-step (incl. real
+driver/BMC/image values and a self-hosted noauth variant) in **[docs/REAL-IRONIC.md](docs/REAL-IRONIC.md)**.
+
 ## Troubleshooting
 
 **State machine not progressing** — the transitions are gated by `lookup` of the Node CR's
