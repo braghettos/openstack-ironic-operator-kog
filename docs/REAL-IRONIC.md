@@ -87,6 +87,46 @@ $KCTL -n openstack get node.baremetal.ogen.krateo.io server01 -o jsonpath='{.sta
 The composition renders one `NodeProvision` CR per state (selected by `lookup` of the node's
 current `provision_state`); cdc re-evaluates each reconcile until the node is `active`.
 
+## Against a Krateo-blueprint Ironic (in-cluster Keystone) — recipe
+
+Validated against an Ironic deployed in-cluster from the
+[Krateo OpenStack blueprint](https://github.com/braghettos/krateo-openstack-blueprint) `ironic`
+component (Keystone-protected, `ironic-api` Service on `:6385`). The same proxy is used, pointed at
+the in-cluster Keystone instead of OpenMetal. Three blueprint-specific points:
+
+1. **clouds.yaml for the in-cluster Keystone** (internal interface, admin), as a Secret the proxy
+   mounts. Set `OS_INTERFACE=internal` and override discovery with
+   `IRONIC_ENDPOINT=http://ironic-api.openstack.svc.cluster.local:6385`:
+   ```yaml
+   clouds:
+     osh:
+       auth:
+         auth_url: http://keystone-api.openstack.svc.cluster.local:5000/v3
+         username: admin
+         password: password
+         project_name: admin
+         user_domain_name: Default
+         project_domain_name: Default
+       region_name: RegionOne
+       identity_api_version: 3
+       interface: internal
+   ```
+
+2. **Use a distinct proxy Service name — do NOT reuse `ironic`.** The openstack-helm ironic chart
+   already owns a Service named `ironic` (its ingress, selector `app: ingress-api`). The OAS server
+   URL defaults to `http://ironic.openstack.svc.cluster.local:6385`, so the operator would hit that
+   dead service — and a Krateo Composition re-applies (reverts) any repoint of it every reconcile.
+   Expose the proxy as e.g. `ironic-kog-proxy` and set `servers[0].url` in both OAS files to it,
+   then **regenerate** the RestDefinitions (the server URL is baked at generation, not read live):
+   `kubectl delete -f manifests/restdefinition-*.yaml`, delete the `nodes`/`nodeconfigurations`/
+   `nodeprovisions` CRDs, restart `oasgen-provider`, re-apply.
+
+3. **`enroll` (and beyond) needs a running conductor.** Ironic refuses `POST /v1/nodes` with `503`
+   ("Resource temporarily unavailable") when no conductor is registered (`GET /v1/drivers` empty).
+   On a cloud-only cluster the conductor cannot start (it hard-fails at pxe-init without a
+   provisioning NIC), so node creation needs real provisioning infra — the operator → proxy → Ironic
+   path itself (routing, auth, microversion, body) is fully exercised up to that point.
+
 ## Self-hosted noauth Ironic (Bifrost) — variant
 
 If your Ironic is standalone/noauth (e.g. Bifrost), you don't need the proxy. Instead route the
