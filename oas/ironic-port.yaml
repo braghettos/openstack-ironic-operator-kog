@@ -1,0 +1,150 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Port resource (CRUD, no update).
+# A Port is a physical NIC on a bare-metal Node (by MAC), used for PXE/Neutron
+# attachment. Ports are addressed by uuid only, so observe uses findby on the
+# `address` (MAC) identifier and get/delete use the created uuid.
+# Ref: https://docs.openstack.org/api-ref/baremetal/#ports-ports
+openapi: 3.0.3
+info:
+  title: Ironic Bare Metal Port API
+  description: Minimal spec for Port CRUD (no in-place update - Ironic PATCH is JSON-Patch only).
+  version: 1.0.0
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (override via PortConfiguration)
+paths:
+  /v1/ports:
+    get:
+      summary: List ports
+      operationId: listPorts
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: List of ports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ports:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Port'
+    post:
+      summary: Create port
+      operationId: createPort
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortCreate'
+      responses:
+        '201':
+          description: Created port
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Port'
+  /v1/ports/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get port by UUID
+      operationId: getPort
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: Port details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Port'
+        '404':
+          description: Port not found
+    delete:
+      summary: Delete port
+      operationId: deletePort
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '204':
+          description: Port deleted
+        '404':
+          description: Port not found
+components:
+  parameters:
+    X-Ironic-Endpoint:
+      name: X-Ironic-Endpoint
+      in: header
+      required: false
+      description: Override Ironic API base URL (used by PortConfiguration)
+      schema:
+        type: string
+    X-OpenStack-Ironic-API-Version:
+      name: X-OpenStack-Ironic-API-Version
+      in: header
+      required: false
+      description: Ironic API microversion (required for writes). Set via PortConfiguration.
+      schema:
+        type: string
+  schemas:
+    Port:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        address:
+          type: string
+          description: MAC address of the NIC.
+        node_uuid:
+          type: string
+          description: UUID of the Node this port belongs to.
+        portgroup_uuid:
+          type: string
+        pxe_enabled:
+          type: boolean
+        physical_network:
+          type: string
+        local_link_connection:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true
+    PortCreate:
+      type: object
+      required:
+        - address
+        - node_uuid
+      properties:
+        address:
+          type: string
+        node_uuid:
+          type: string
+        portgroup_uuid:
+          type: string
+        pxe_enabled:
+          type: boolean
+        physical_network:
+          type: string
+        local_link_connection:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true

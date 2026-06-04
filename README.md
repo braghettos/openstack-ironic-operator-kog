@@ -45,8 +45,16 @@ All `kubectl`/`helm` use an isolated kubeconfig (`local/kubeconfig.ironic-kog`) 
 |------|-------------|
 | `oas/ironic-node.yaml` | OpenAPI spec for Node CRUD (KOG input) |
 | `oas/ironic-provision.yaml` | OpenAPI spec for the provision action (KOG input) |
+| `oas/ironic-port.yaml` | OpenAPI spec for Port CRUD (NIC on a node) |
+| `oas/ironic-portgroup.yaml` | OpenAPI spec for Portgroup CRUD (bonded NICs) |
+| `oas/ironic-allocation.yaml` | OpenAPI spec for Allocation CRUD (node matching/binding) |
+| `oas/ironic-deploy-template.yaml` | OpenAPI spec for Deploy Template CRUD (trait -> deploy steps) |
 | `manifests/restdefinition-node.yaml` | RestDefinition: Node CRUD |
 | `manifests/restdefinition-provision.yaml` | RestDefinition: NodeProvision action |
+| `manifests/restdefinition-port.yaml` | RestDefinition: Port (`Port`) |
+| `manifests/restdefinition-portgroup.yaml` | RestDefinition: Portgroup (`PortGroup`) |
+| `manifests/restdefinition-allocation.yaml` | RestDefinition: Allocation (`Allocation`) |
+| `manifests/restdefinition-deploy-template.yaml` | RestDefinition: Deploy Template (`DeployTemplate`) |
 | `manifests/compositiondefinition-baremetal-lifecycle.yaml` | CompositionDefinition for core-provider |
 | `manifests/baremetallifecycle-example.yaml` | Example composition instance |
 | `charts/baremetal-lifecycle/` | Helm chart: Node + NodeConfiguration + per-state NodeProvision CRs |

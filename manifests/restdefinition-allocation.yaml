@@ -1,0 +1,55 @@
+# RestDefinition for Ironic Allocation - oasgen-provider generates the Allocation CRD + controller.
+# Apply: create configmap ironic-allocation-oas from ../oas/ironic-allocation.yaml
+#        (key ironic_allocation.yaml), then apply this file.
+# Addressed by uuid or name; Ironic resolves name as the {ident}, so get/delete map the
+# path id from spec.name (known pre-create). Allocations are immutable - no update verb.
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-allocation
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-allocation-oas/ironic_allocation.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: Allocation
+    identifiers:
+      - name
+    additionalStatusFields:
+      - uuid
+      - state
+      - node_uuid
+    excludedSpecFields:
+      - uuid
+    configurationFields:
+      - fromOpenAPI:
+          name: X-Ironic-Endpoint
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+      - fromOpenAPI:
+          name: X-OpenStack-Ironic-API-Version
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/allocations
+        identifiersMatchPolicy: OR
+      - action: get
+        method: GET
+        path: /v1/allocations/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
+      - action: create
+        method: POST
+        path: /v1/allocations
+      - action: delete
+        method: DELETE
+        path: /v1/allocations/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
