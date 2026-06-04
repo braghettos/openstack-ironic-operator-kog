@@ -1,0 +1,146 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Portgroup resource (CRUD, no update).
+# A Portgroup bonds several Ports of a Node (LACP/active-backup). Addressed by
+# uuid or name; observe maps {uuid}<-spec.name (Ironic resolves name as ident).
+# Ref: https://docs.openstack.org/api-ref/baremetal/#portgroups-portgroups
+openapi: 3.0.3
+info:
+  title: Ironic Bare Metal Portgroup API
+  description: Minimal spec for Portgroup CRUD (no in-place update - Ironic PATCH is JSON-Patch only).
+  version: 1.0.0
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (override via PortgroupConfiguration)
+paths:
+  /v1/portgroups:
+    get:
+      summary: List portgroups
+      operationId: listPortgroups
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: List of portgroups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portgroups:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Portgroup'
+    post:
+      summary: Create portgroup
+      operationId: createPortgroup
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortgroupCreate'
+      responses:
+        '201':
+          description: Created portgroup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portgroup'
+  /v1/portgroups/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get portgroup by ident
+      operationId: getPortgroup
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: Portgroup details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Portgroup'
+        '404':
+          description: Portgroup not found
+    delete:
+      summary: Delete portgroup
+      operationId: deletePortgroup
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '204':
+          description: Portgroup deleted
+        '404':
+          description: Portgroup not found
+components:
+  parameters:
+    X-Ironic-Endpoint:
+      name: X-Ironic-Endpoint
+      in: header
+      required: false
+      description: Override Ironic API base URL (used by PortgroupConfiguration)
+      schema:
+        type: string
+    X-OpenStack-Ironic-API-Version:
+      name: X-OpenStack-Ironic-API-Version
+      in: header
+      required: false
+      description: Ironic API microversion (required for writes). Set via PortgroupConfiguration.
+      schema:
+        type: string
+  schemas:
+    Portgroup:
+      type: object
+      properties:
+        uuid:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        node_uuid:
+          type: string
+        address:
+          type: string
+          description: MAC address of the portgroup.
+        mode:
+          type: string
+          description: Bond mode (e.g. active-backup, 802.3ad).
+        standalone_ports_supported:
+          type: boolean
+        properties:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true
+    PortgroupCreate:
+      type: object
+      required:
+        - node_uuid
+      properties:
+        name:
+          type: string
+        node_uuid:
+          type: string
+        address:
+          type: string
+        mode:
+          type: string
+        standalone_ports_supported:
+          type: boolean
+        properties:
+          type: object
+          additionalProperties: true
+        extra:
+          type: object
+          additionalProperties: true

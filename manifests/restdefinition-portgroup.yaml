@@ -1,0 +1,55 @@
+# RestDefinition for Ironic PortGroup - oasgen-provider generates the PortGroup CRD + controller.
+# Apply: create configmap ironic-portgroup-oas from ../oas/ironic-portgroup.yaml
+#        (key ironic_portgroup.yaml), then apply this file.
+# Addressed by uuid or name; Ironic resolves name as the {ident}, so get/delete map the
+# path id from spec.name (known pre-create). No update verb (Ironic PATCH is JSON-Patch only).
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-portgroup
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-portgroup-oas/ironic_portgroup.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: PortGroup
+    identifiers:
+      - name
+    additionalStatusFields:
+      - uuid
+      - node_uuid
+      - address
+    excludedSpecFields:
+      - uuid
+    configurationFields:
+      - fromOpenAPI:
+          name: X-Ironic-Endpoint
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+      - fromOpenAPI:
+          name: X-OpenStack-Ironic-API-Version
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/portgroups
+        identifiersMatchPolicy: OR
+      - action: get
+        method: GET
+        path: /v1/portgroups/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
+      - action: create
+        method: POST
+        path: /v1/portgroups
+      - action: delete
+        method: DELETE
+        path: /v1/portgroups/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name

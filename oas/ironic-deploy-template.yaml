@@ -1,0 +1,151 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Deploy Template resource (CRUD, no update).
+# A Deploy Template maps a trait (name, e.g. CUSTOM_HYPERTHREADING) to a list of
+# deploy steps applied during provisioning. Standalone (no Node required), so it
+# is the one new Ironic resource fully exercisable without bare metal.
+# Ref: https://docs.openstack.org/api-ref/baremetal/#deploy-templates
+openapi: 3.0.3
+info:
+  title: Ironic Bare Metal Deploy Template API
+  description: Minimal spec for Deploy Template CRUD (no in-place update - Ironic PATCH is JSON-Patch only).
+  version: 1.0.0
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (override via DeployTemplateConfiguration)
+paths:
+  /v1/deploy_templates:
+    get:
+      summary: List deploy templates
+      operationId: listDeployTemplates
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: List of deploy templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deploy_templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeployTemplate'
+    post:
+      summary: Create deploy template
+      operationId: createDeployTemplate
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployTemplateCreate'
+      responses:
+        '201':
+          description: Created deploy template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeployTemplate'
+  /v1/deploy_templates/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get deploy template by ident
+      operationId: getDeployTemplate
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: Deploy template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeployTemplate'
+        '404':
+          description: Deploy template not found
+    delete:
+      summary: Delete deploy template
+      operationId: deleteDeployTemplate
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '204':
+          description: Deploy template deleted
+        '404':
+          description: Deploy template not found
+components:
+  parameters:
+    X-Ironic-Endpoint:
+      name: X-Ironic-Endpoint
+      in: header
+      required: false
+      description: Override Ironic API base URL (used by DeployTemplateConfiguration)
+      schema:
+        type: string
+    X-OpenStack-Ironic-API-Version:
+      name: X-OpenStack-Ironic-API-Version
+      in: header
+      required: false
+      description: Ironic API microversion (>=1.55 required for deploy templates). Set via DeployTemplateConfiguration.
+      schema:
+        type: string
+  schemas:
+    DeployStep:
+      type: object
+      required:
+        - interface
+        - step
+        - priority
+      properties:
+        interface:
+          type: string
+          description: Driver interface (e.g. raid, bios, deploy).
+        step:
+          type: string
+          description: Step name on that interface.
+        args:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+    DeployTemplate:
+      type: object
+      properties:
+        uuid:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          description: Trait name (CUSTOM_* or a standard trait).
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeployStep'
+        extra:
+          type: object
+          additionalProperties: true
+    DeployTemplateCreate:
+      type: object
+      required:
+        - name
+        - steps
+      properties:
+        name:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeployStep'
+        extra:
+          type: object
+          additionalProperties: true

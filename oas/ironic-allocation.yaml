@@ -1,0 +1,148 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Allocation resource (CRUD, no update).
+# An Allocation requests a bare-metal Node matching a resource_class/traits and
+# binds it. Addressed by uuid or name; observe maps {uuid}<-spec.name.
+# Ref: https://docs.openstack.org/api-ref/baremetal/#allocations
+openapi: 3.0.3
+info:
+  title: Ironic Bare Metal Allocation API
+  description: Minimal spec for Allocation CRUD. Allocations are immutable once created (no update).
+  version: 1.0.0
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (override via AllocationConfiguration)
+paths:
+  /v1/allocations:
+    get:
+      summary: List allocations
+      operationId: listAllocations
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: List of allocations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allocations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Allocation'
+    post:
+      summary: Create allocation
+      operationId: createAllocation
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocationCreate'
+      responses:
+        '201':
+          description: Created allocation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+  /v1/allocations/{uuid}:
+    parameters:
+      - name: uuid
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get allocation by ident
+      operationId: getAllocation
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '200':
+          description: Allocation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Allocation'
+        '404':
+          description: Allocation not found
+    delete:
+      summary: Delete allocation
+      operationId: deleteAllocation
+      parameters:
+        - $ref: '#/components/parameters/X-Ironic-Endpoint'
+        - $ref: '#/components/parameters/X-OpenStack-Ironic-API-Version'
+      responses:
+        '204':
+          description: Allocation deleted
+        '404':
+          description: Allocation not found
+components:
+  parameters:
+    X-Ironic-Endpoint:
+      name: X-Ironic-Endpoint
+      in: header
+      required: false
+      description: Override Ironic API base URL (used by AllocationConfiguration)
+      schema:
+        type: string
+    X-OpenStack-Ironic-API-Version:
+      name: X-OpenStack-Ironic-API-Version
+      in: header
+      required: false
+      description: Ironic API microversion (required for writes). Set via AllocationConfiguration.
+      schema:
+        type: string
+  schemas:
+    Allocation:
+      type: object
+      properties:
+        uuid:
+          type: string
+          readOnly: true
+        name:
+          type: string
+        resource_class:
+          type: string
+        state:
+          type: string
+          readOnly: true
+        node_uuid:
+          type: string
+          readOnly: true
+        candidate_nodes:
+          type: array
+          items:
+            type: string
+        traits:
+          type: array
+          items:
+            type: string
+        extra:
+          type: object
+          additionalProperties: true
+    AllocationCreate:
+      type: object
+      required:
+        - resource_class
+      properties:
+        name:
+          type: string
+        resource_class:
+          type: string
+        candidate_nodes:
+          type: array
+          items:
+            type: string
+        traits:
+          type: array
+          items:
+            type: string
+        extra:
+          type: object
+          additionalProperties: true

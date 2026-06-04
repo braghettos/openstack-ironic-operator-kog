@@ -1,0 +1,50 @@
+# RestDefinition for Ironic Port - oasgen-provider generates the Port CRD + controller.
+# Apply order:
+#   1. kubectl create configmap ironic-port-oas -n openstack --from-file=ironic_port.yaml=../oas/ironic-port.yaml
+#   2. kubectl apply -f restdefinition-port.yaml
+# Ports have no name (uuid only), so observe uses findby on the `address` (MAC)
+# identifier; get/delete address the created uuid from status. No `update` verb
+# (Ironic PATCH is JSON-Patch-only).
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-port
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-port-oas/ironic_port.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: Port
+    identifiers:
+      - address
+    additionalStatusFields:
+      - uuid
+      - node_uuid
+    excludedSpecFields:
+      - uuid
+    configurationFields:
+      - fromOpenAPI:
+          name: X-Ironic-Endpoint
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+      - fromOpenAPI:
+          name: X-OpenStack-Ironic-API-Version
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/ports
+        identifiersMatchPolicy: OR
+      - action: create
+        method: POST
+        path: /v1/ports
+      - action: delete
+        method: DELETE
+        path: /v1/ports/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: status.uuid
