@@ -2,6 +2,9 @@
   <img src="docs/krateo-loves-ironic.png" alt="Krateo loves OpenStack Ironic" width="900"/>
 </p>
 
+> 📖 **[Quickstart](docs/quickstart.md)** — install the operator and see a resource appear in Horizon.
+
+
 # OpenStack Ironic + Krateo (KOG)
 
 Provision bare metal servers with OpenStack Ironic using Krateo's dynamic controllers
