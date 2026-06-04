@@ -1,0 +1,53 @@
+# RestDefinition for Ironic DeployTemplate - oasgen-provider generates the CRD + controller.
+# Apply: create configmap ironic-deploy-template-oas from ../oas/ironic-deploy-template.yaml
+#        (key ironic_deploy_template.yaml), then apply this file.
+# Standalone (no Node needed); addressed by uuid or name; get/delete map the path id from
+# spec.name (known pre-create). No update verb (Ironic PATCH is JSON-Patch only).
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-deploy-template
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-deploy-template-oas/ironic_deploy_template.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: DeployTemplate
+    identifiers:
+      - name
+    additionalStatusFields:
+      - uuid
+    excludedSpecFields:
+      - uuid
+    configurationFields:
+      - fromOpenAPI:
+          name: X-Ironic-Endpoint
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+      - fromOpenAPI:
+          name: X-OpenStack-Ironic-API-Version
+          in: header
+        fromRestDefinition:
+          actions: ["*"]
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/deploy_templates
+        identifiersMatchPolicy: OR
+      - action: get
+        method: GET
+        path: /v1/deploy_templates/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
+      - action: create
+        method: POST
+        path: /v1/deploy_templates
+      - action: delete
+        method: DELETE
+        path: /v1/deploy_templates/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
