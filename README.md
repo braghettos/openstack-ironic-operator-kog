@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/krateo-loves-ironic.png" alt="Krateo loves OpenStack Ironic" width="900"/>
+</p>
+
 # OpenStack Ironic + Krateo (KOG)
 
 Provision bare metal servers with OpenStack Ironic using Krateo's dynamic controllers
