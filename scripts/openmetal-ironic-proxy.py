@@ -39,10 +39,32 @@ _HOP = {"content-length", "transfer-encoding", "content-encoding", "connection",
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _read_body(self):
+        # The KOG rest-dynamic-controller (Go http client) sends write bodies with
+        # Transfer-Encoding: chunked (no Content-Length). BaseHTTPRequestHandler does
+        # not de-chunk, so reading Content-Length alone yields an empty body (Ironic
+        # then 400s with "'driver' is a required property") and the leftover chunk bytes
+        # corrupt the keep-alive connection. Handle both framings explicitly.
+        te = (self.headers.get("Transfer-Encoding") or "").lower()
+        if "chunked" in te:
+            chunks = []
+            while True:
+                size_line = self.rfile.readline().split(b";", 1)[0].strip()
+                if not size_line:
+                    continue
+                size = int(size_line, 16)
+                if size == 0:
+                    self.rfile.readline()  # consume the trailing CRLF after the last chunk
+                    break
+                chunks.append(self.rfile.read(size))
+                self.rfile.read(2)  # consume the CRLF after each chunk
+            return b"".join(chunks)
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        return self.rfile.read(length) if length else None
+
     def _proxy(self):
         try:
-            length = int(self.headers.get("Content-Length", 0) or 0)
-            body = self.rfile.read(length) if length else None
+            body = self._read_body()
             url = ENDPOINT + self.path  # self.path includes the query string
             headers = {
                 "X-OpenStack-Ironic-API-Version": self.headers.get(
