@@ -1,0 +1,43 @@
+# Tiny in-cluster proxy that forwards to a remote Bifrost (standalone Ironic) and injects the
+# microversion header. `make bifrost-up BIFROST_URL=http://<bifrost-host>:6385` creates the
+# `bifrost-proxy-nginx` ConfigMap from manifests/bifrost-nginx.conf.tpl with the upstream URL
+# substituted, applies this manifest, and repoints the `ironic` Service at it. The operator
+# config (OAS endpoint, RestDefinitions, chart) is unchanged.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bifrost-proxy
+  namespace: openstack
+  labels:
+    app: bifrost-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bifrost-proxy
+  template:
+    metadata:
+      labels:
+        app: bifrost-proxy
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - name: api
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: conf
+          configMap:
+            name: bifrost-proxy-nginx

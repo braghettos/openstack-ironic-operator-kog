@@ -29,6 +29,8 @@ help:
 	@echo "  provision-demo - Provision a sample fake node -> active (simulated reconciles via helm)"
 	@echo "  composition-up - Host the chart + install the CompositionDefinition (real cdc path)"
 	@echo "  composition-demo - Create a BaremetalLifecycle instance; cdc walks it to active"
+	@echo "  bifrost-up     - Point the operator at a remote standalone Ironic (BIFROST_URL=http://host:6385)"
+	@echo "  bifrost-down   - Repoint the ironic Service back at the local fake Ironic"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
 	@echo "  local-down     - Delete the local kind cluster"
@@ -174,6 +176,22 @@ openmetal-proxy-up: # deploy the Keystone-auth proxy and point the `ironic` Serv
 	@echo "ironic Service -> OpenMetal proxy. Operator endpoint (OAS) unchanged."
 
 openmetal-down: # repoint the `ironic` Service back at the local fake Ironic
+	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"ironic"}}}'
+
+# --- Remote standalone Ironic (Bifrost) -----------------------------------------
+# Point the operator at a real Bifrost on a remote Linux host. See docs/BIFROST.md.
+bifrost-up:   # deploy the in-cluster proxy and point `ironic` Service at a remote Bifrost (set BIFROST_URL=http://host:6385)
+	@test -n "$(BIFROST_URL)" || { echo "ERROR: set BIFROST_URL=http://<bifrost-host>:6385"; exit 1; }
+	@sed 's|__UPSTREAM__|$(BIFROST_URL)|' manifests/bifrost-nginx.conf.tpl > /tmp/bifrost-nginx.conf
+	$(KUBECTL) -n $(IRONIC_NS) create configmap bifrost-proxy-nginx \
+		--from-file=nginx.conf=/tmp/bifrost-nginx.conf --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) apply -f manifests/bifrost-proxy.yaml
+	$(KUBECTL) -n $(IRONIC_NS) rollout restart deploy/bifrost-proxy
+	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/bifrost-proxy --timeout=120s
+	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"bifrost-proxy"}}}'
+	@echo "ironic Service -> Bifrost at $(BIFROST_URL). Operator endpoint (OAS) unchanged."
+
+bifrost-down: # repoint the `ironic` Service back at the local fake Ironic
 	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"ironic"}}}'
 
 local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinitions

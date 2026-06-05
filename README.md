@@ -101,10 +101,14 @@ controller. For a real cluster, publish the `.tgz` (`make package-chart`) to HTT
 
 ## Against a real Ironic API
 
-To run the operator against a real, Keystone-protected Ironic (e.g. an OpenMetal hosted cloud), a
-small auth proxy authenticates with your `clouds.yaml` and the operator points at it unchanged:
-`make openmetal-proxy-up CLOUDS_FILE=clouds.yaml OS_CLOUD=<name>`. Full step-by-step (incl. real
-driver/BMC/image values and a self-hosted noauth variant) in **[docs/REAL-IRONIC.md](docs/REAL-IRONIC.md)**.
+Two paths, neither needs operator changes:
+
+- **Standalone Ironic on a Linux host (Bifrost)** — real PXE deploys to libvirt VMs as virtual
+  bare metal, no Keystone/Glance/Nova. `make bifrost-up BIFROST_URL=http://<host>:6385`.
+  Full quickstart: **[docs/BIFROST.md](docs/BIFROST.md)**.
+- **Keystone-protected Ironic (e.g. OpenMetal)** — auth proxy authenticates with your
+  `clouds.yaml`. `make openmetal-proxy-up CLOUDS_FILE=clouds.yaml OS_CLOUD=<name>`. Full
+  step-by-step: **[docs/REAL-IRONIC.md](docs/REAL-IRONIC.md)**.
 
 ## Troubleshooting
 
