@@ -1,21 +1,17 @@
 # Quickstart: run the operator against a real Ironic API
 
 The operator is the same as in the local (fake) env — only the endpoint behind the in-cluster
-`ironic` Service changes. For a real, Keystone-protected Ironic (e.g. an OpenMetal hosted-private
-cloud where you hold the admin role), a small **auth proxy** authenticates with your
-`clouds.yaml`, injects a fresh `X-Auth-Token` + microversion, and forwards to the cloud's Ironic.
-The operator's config (OAS endpoint, RestDefinitions, chart) is unchanged.
-
-> Status: this path is wired and the proxy is unit-tested, but it has **not** yet been run end
-> to end against a live cloud (no public free Ironic API exists — see the repo discussion). Treat
-> it as the intended recipe; expect to iterate on cloud-specific quirks.
+`ironic` Service changes. For any real, Keystone-protected Ironic (on-prem, hosted-private, your
+own openstack-helm/devstack deployment, etc.) a small **auth proxy** authenticates with your
+`clouds.yaml`, injects a fresh `X-Auth-Token` + microversion, and forwards to your Ironic. The
+operator's config (OAS endpoint, RestDefinitions, chart) is unchanged.
 
 ## Prerequisites
 
 - A real OpenStack with the **`baremetal` (Ironic) service in the Keystone catalog** and
-  admin/operator access (hosted-private such as OpenMetal; OpenMetal also has free trials).
-- A `clouds.yaml` for it (Horizon → API Access, or the provider portal). Note the cloud name
-  (top-level key under `clouds:`).
+  admin/operator access (your own cluster, a lab, an on-prem deployment, a hosted-private cloud).
+- A `clouds.yaml` for it (Horizon → API Access, the provider portal, or your installer's output).
+  Note the cloud name (top-level key under `clouds:`).
 - Docker + kind + helm + kubectl (the operator runs in a local kind cluster).
 
 ## Steps
@@ -35,13 +31,13 @@ that's fine; the next step repoints the `ironic` Service away from it.
 Put your file at `./clouds.yaml` (gitignored), then:
 
 ```bash
-make openmetal-proxy-up CLOUDS_FILE=clouds.yaml OS_CLOUD=<your-cloud-name>
+make keystone-up CLOUDS_FILE=clouds.yaml OS_CLOUD=<your-cloud-name>
 ```
 
-This creates a Secret from `clouds.yaml`, deploys the proxy (`scripts/openmetal-ironic-proxy.py`
+This creates a Secret from `clouds.yaml`, deploys the proxy (`scripts/keystone-ironic-proxy.py`
 in the openstack-client image, which uses `openstacksdk` to auto-refresh the Keystone token and
 discover the `baremetal` endpoint), and repoints the `ironic` Service at it. The proxy listens on
-the same port the operator already targets, so nothing else changes. `make openmetal-down` switches
+the same port the operator already targets, so nothing else changes. `make keystone-down` switches
 back to the local fake Ironic.
 
 ### 3. Verify connectivity through the proxy
@@ -92,7 +88,7 @@ current `provision_state`); cdc re-evaluates each reconcile until the node is `a
 Validated against an Ironic deployed in-cluster from the
 [Krateo OpenStack blueprint](https://github.com/braghettos/krateo-openstack-blueprint) `ironic`
 component (Keystone-protected, `ironic-api` Service on `:6385`). The same proxy is used, pointed at
-the in-cluster Keystone instead of OpenMetal. Three blueprint-specific points:
+the in-cluster Keystone. Three blueprint-specific points:
 
 1. **clouds.yaml for the in-cluster Keystone** (internal interface, admin), as a Secret the proxy
    mounts. Set `OS_INTERFACE=internal` and override discovery with

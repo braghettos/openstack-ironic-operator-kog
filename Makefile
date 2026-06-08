@@ -31,6 +31,8 @@ help:
 	@echo "  composition-demo - Create a BaremetalLifecycle instance; cdc walks it to active"
 	@echo "  bifrost-up     - Point the operator at a remote standalone Ironic (BIFROST_URL=http://host:6385)"
 	@echo "  bifrost-down   - Repoint the ironic Service back at the local fake Ironic"
+	@echo "  keystone-up    - Point the operator at a Keystone-protected Ironic (CLOUDS_FILE + OS_CLOUD)"
+	@echo "  keystone-down  - Repoint the ironic Service back at the local fake Ironic"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
 	@echo "  local-down     - Delete the local kind cluster"
@@ -157,25 +159,26 @@ composition-demo: # create a BaremetalLifecycle instance; composition-dynamic-co
 	$(KUBECTL) apply -f manifests/baremetallifecycle-example.yaml
 	@echo "watch: $(KUBECTL) -n $(IRONIC_NS) get node.baremetal.ogen.krateo.io metal-a -o jsonpath='{.status.provision_state}'"
 
-# --- Real Ironic (OpenMetal) via a Keystone-auth proxy --------------------------
-# Point the operator at a real, Keystone-protected Ironic without changing the operator: a proxy
-# authenticates with your clouds.yaml and the `ironic` Service is repointed at it.
+# --- Real Ironic via a Keystone-auth proxy --------------------------------------
+# Point the operator at any Keystone-protected Ironic (on-prem or hosted) without changing the
+# operator: a proxy authenticates with your clouds.yaml and the `ironic` Service is repointed
+# at it. The OAS server URL never changes.
 CLOUDS_FILE ?= clouds.yaml
 OS_CLOUD ?= openstack
 
-openmetal-proxy-up: # deploy the Keystone-auth proxy and point the `ironic` Service at OpenMetal
+keystone-up: # deploy the Keystone-auth proxy and point the `ironic` Service at your real Ironic
 	@test -f "$(CLOUDS_FILE)" || { echo "ERROR: set CLOUDS_FILE=<path to clouds.yaml> (got '$(CLOUDS_FILE)')"; exit 1; }
-	$(KUBECTL) -n $(IRONIC_NS) create secret generic openmetal-clouds \
+	$(KUBECTL) -n $(IRONIC_NS) create secret generic ironic-clouds \
 		--from-file=clouds.yaml="$(CLOUDS_FILE)" --dry-run=client -o yaml | $(KUBECTL) apply -f -
-	$(KUBECTL) -n $(IRONIC_NS) create configmap openmetal-proxy-script \
-		--from-file=openmetal-ironic-proxy.py=scripts/openmetal-ironic-proxy.py --dry-run=client -o yaml | $(KUBECTL) apply -f -
-	$(KUBECTL) apply -f manifests/openmetal-ironic-proxy.yaml
-	$(KUBECTL) -n $(IRONIC_NS) set env deploy/openmetal-ironic-proxy OS_CLOUD=$(OS_CLOUD)
-	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/openmetal-ironic-proxy --timeout=150s
-	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"openmetal-ironic-proxy"}}}'
-	@echo "ironic Service -> OpenMetal proxy. Operator endpoint (OAS) unchanged."
+	$(KUBECTL) -n $(IRONIC_NS) create configmap keystone-ironic-proxy-script \
+		--from-file=keystone-ironic-proxy.py=scripts/keystone-ironic-proxy.py --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) apply -f manifests/keystone-ironic-proxy.yaml
+	$(KUBECTL) -n $(IRONIC_NS) set env deploy/keystone-ironic-proxy OS_CLOUD=$(OS_CLOUD)
+	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/keystone-ironic-proxy --timeout=150s
+	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"keystone-ironic-proxy"}}}'
+	@echo "ironic Service -> Keystone-auth proxy. Operator endpoint (OAS) unchanged."
 
-openmetal-down: # repoint the `ironic` Service back at the local fake Ironic
+keystone-down: # repoint the `ironic` Service back at the local fake Ironic
 	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"ironic"}}}'
 
 # --- Remote standalone Ironic (Bifrost) -----------------------------------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keystone-auth reverse proxy for an OpenStack Ironic API (e.g. OpenMetal).
+"""Keystone-auth reverse proxy for an OpenStack Ironic API (any deployment).
 
 The KOG rest-dynamic-controller speaks plain HTTP and cannot do Keystone token
 exchange/refresh. This proxy authenticates with clouds.yaml (OS_CLOUD), discovers the

@@ -1,36 +1,37 @@
-# Keystone-auth reverse proxy to a real Ironic (OpenMetal). Lets the KOG operator (which speaks
-# plain HTTP) talk to a Keystone-protected Ironic: the proxy authenticates with clouds.yaml,
-# discovers the baremetal endpoint, and injects a fresh X-Auth-Token + microversion on every call.
+# Keystone-auth reverse proxy to a real Ironic. Lets the KOG operator (which speaks plain HTTP)
+# talk to a Keystone-protected Ironic - any deployment, on-prem or hosted: the proxy
+# authenticates with clouds.yaml, discovers the baremetal endpoint, and injects a fresh
+# X-Auth-Token + microversion on every call.
 #
-# It listens on 8080 to match the `ironic` Service targetPort, so pointing the operator at
-# OpenMetal is just repointing that Service's selector at this proxy (see `make openmetal-proxy-up`).
-# The OAS server URL / operator config never change.
+# It listens on 8080 to match the `ironic` Service targetPort, so pointing the operator at a
+# Keystone-protected Ironic is just repointing that Service's selector at this proxy
+# (see `make keystone-up`). The OAS server URL / operator config never change.
 #
-# Requires (created by `make openmetal-proxy-up`):
-#   - Secret  openmetal-clouds       (your clouds.yaml)
-#   - ConfigMap openmetal-proxy-script (scripts/openmetal-ironic-proxy.py)
+# Requires (created by `make keystone-up`):
+#   - Secret  ironic-clouds                  (your clouds.yaml)
+#   - ConfigMap keystone-ironic-proxy-script (scripts/keystone-ironic-proxy.py)
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openmetal-ironic-proxy
+  name: keystone-ironic-proxy
   namespace: openstack
   labels:
-    app: openmetal-ironic-proxy
+    app: keystone-ironic-proxy
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openmetal-ironic-proxy
+      app: keystone-ironic-proxy
   template:
     metadata:
       labels:
-        app: openmetal-ironic-proxy
+        app: keystone-ironic-proxy
     spec:
       containers:
         - name: proxy
           image: quay.io/airshipit/openstack-client:2026.1-ubuntu_noble
-          command: ["python3", "/app/openmetal-ironic-proxy.py"]
+          command: ["python3", "/app/keystone-ironic-proxy.py"]
           env:
             - name: OS_CLOUD
               value: "openstack"          # set to the cloud name in your clouds.yaml
@@ -60,7 +61,7 @@ spec:
       volumes:
         - name: script
           configMap:
-            name: openmetal-proxy-script
+            name: keystone-ironic-proxy-script
         - name: clouds
           secret:
-            secretName: openmetal-clouds
+            secretName: ironic-clouds
