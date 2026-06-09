@@ -1,0 +1,123 @@
+# WireGuard tunnel + Keystone-auth Ironic proxy, scoped to the cluster (no host VPN needed).
+# The operator pods talk to the in-cluster `ironic` Service; this pod has the WireGuard interface
+# and the Keystone proxy share the same netns, so /v1/nodes calls travel:
+#   operator pod -> Service ironic:6385 -> this pod:8080 (proxy) -> WG -> real Keystone+Ironic
+#
+# Requires (created by `make lab-up` from your local files):
+#   - Secret  ironic-wg-config              key wg0.conf  (local/wireguard/ironic-lab.conf)
+#   - Secret  ironic-clouds                 key clouds.yaml (./clouds.yaml)
+#   - ConfigMap keystone-ironic-proxy-script (scripts/keystone-ironic-proxy.py)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openstack
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wg-ironic-proxy
+  namespace: openstack
+  labels:
+    app: wg-ironic-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wg-ironic-proxy
+  template:
+    metadata:
+      labels:
+        app: wg-ironic-proxy
+    spec:
+      containers:
+        - name: proxy
+          image: quay.io/airshipit/openstack-client:2026.1-ubuntu_noble
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "[startup] installing wireguard-tools + iproute2 ..."
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends wireguard-tools iproute2 iputils-ping curl ca-certificates
+              # wireguard-go fallback in case the kind node kernel lacks the WG module
+              if ! lsmod 2>/dev/null | grep -q wireguard && ! modinfo wireguard >/dev/null 2>&1; then
+                if ! command -v wireguard-go >/dev/null 2>&1; then
+                  echo "[startup] kernel WG unavailable; fetching wireguard-go..."
+                  arch=$(uname -m); case "$arch" in x86_64) wgarch=amd64;; aarch64|arm64) wgarch=arm64;; esac
+                  curl -fsSL "https://github.com/WireGuard/wireguard-go/releases/latest/download/wireguard-go-linux-$wgarch" \
+                    -o /usr/local/bin/wireguard-go && chmod +x /usr/local/bin/wireguard-go || true
+                fi
+              fi
+              install -m 600 /wg-config/wg0.conf /etc/wireguard/wg0.conf
+              # On container restart wg0 lingers in the pod netns; tear it down before re-up
+              wg-quick down /etc/wireguard/wg0.conf 2>/dev/null || ip link delete wg0 2>/dev/null || true
+              echo "[startup] wg-quick up ..."
+              wg-quick up /etc/wireguard/wg0.conf
+              wg show
+              ip -4 addr show wg0 || true
+              ip route | head -5
+              echo "[startup] launching keystone-ironic-proxy ..."
+              exec python3 /app/keystone-ironic-proxy.py
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN"]
+          env:
+            - name: OS_CLOUD
+              value: "ironic"
+            - name: OS_CLIENT_CONFIG_FILE
+              value: /etc/openstack/clouds.yaml
+            - name: OS_INTERFACE
+              value: "public"
+            - name: LISTEN_PORT
+              value: "8080"
+            - name: IRONIC_API_VERSION
+              value: "1.81"
+          ports:
+            - name: api
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /v1/nodes
+              port: 8080
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 12
+          volumeMounts:
+            - name: wg-config
+              mountPath: /wg-config
+              readOnly: true
+            - name: script
+              mountPath: /app
+            - name: clouds
+              mountPath: /etc/openstack
+              readOnly: true
+      volumes:
+        - name: wg-config
+          secret:
+            secretName: ironic-wg-config
+            defaultMode: 0400
+        - name: script
+          configMap:
+            name: keystone-ironic-proxy-script
+        - name: clouds
+          secret:
+            secretName: ironic-clouds
+            defaultMode: 0400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ironic
+  namespace: openstack
+  labels:
+    app: wg-ironic-proxy
+spec:
+  selector:
+    app: wg-ironic-proxy
+  ports:
+    - name: api
+      port: 6385
+      targetPort: 8080

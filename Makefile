@@ -33,6 +33,9 @@ help:
 	@echo "  bifrost-down   - Repoint the ironic Service back at the local fake Ironic"
 	@echo "  keystone-up    - Point the operator at a Keystone-protected Ironic (CLOUDS_FILE + OS_CLOUD)"
 	@echo "  keystone-down  - Repoint the ironic Service back at the local fake Ironic"
+	@echo "Dedicated lab cluster (WireGuard tunnel runs in-cluster, host networking untouched):"
+	@echo "  lab-up         - Spin up a separate kind cluster with WG + Keystone proxy + operator"
+	@echo "  lab-down       - Delete the lab kind cluster"
 	@echo "  ironic-forward - Port-forward Ironic API to localhost:6385"
 	@echo "  smoke-test     - Drive a fake node enroll->active against local Ironic"
 	@echo "  local-down     - Delete the local kind cluster"
@@ -196,6 +199,35 @@ bifrost-up:   # deploy the in-cluster proxy and point `ironic` Service at a remo
 
 bifrost-down: # repoint the `ironic` Service back at the local fake Ironic
 	$(KUBECTL) -n $(IRONIC_NS) patch service ironic -p '{"spec":{"selector":{"app":"ironic"}}}'
+
+# --- Lab cluster: dedicated kind cluster with in-cluster WireGuard + Keystone proxy ----
+# A separate kind cluster (default name: ironic-lab) where the WireGuard tunnel runs inside the
+# proxy pod, so the host's networking stays untouched. The operator pods talk to
+# `ironic.openstack.svc.cluster.local:6385` and traffic exits via WG to the real Ironic.
+LAB_CLUSTER ?= ironic-lab
+WG_CONF     ?= local/wireguard/ironic-lab.conf
+OS_CLOUD    ?= ironic
+
+lab-tunnel-up: # apply the wg+proxy Deployment+Service + Secrets/ConfigMap (kubeconfig from caller)
+	@test -f "$(WG_CONF)" || { echo "ERROR: set WG_CONF (got '$(WG_CONF)')"; exit 1; }
+	@test -f "$(CLOUDS_FILE)" || { echo "ERROR: set CLOUDS_FILE (got '$(CLOUDS_FILE)')"; exit 1; }
+	$(KUBECTL) apply -f manifests/wg-ironic-proxy.yaml
+	$(KUBECTL) -n $(IRONIC_NS) create secret generic ironic-wg-config \
+		--from-file=wg0.conf="$(WG_CONF)" --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) -n $(IRONIC_NS) create secret generic ironic-clouds \
+		--from-file=clouds.yaml="$(CLOUDS_FILE)" --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) -n $(IRONIC_NS) create configmap keystone-ironic-proxy-script \
+		--from-file=keystone-ironic-proxy.py=scripts/keystone-ironic-proxy.py --dry-run=client -o yaml | $(KUBECTL) apply -f -
+	$(KUBECTL) -n $(IRONIC_NS) set env deploy/wg-ironic-proxy OS_CLOUD=$(OS_CLOUD)
+	$(KUBECTL) -n $(IRONIC_NS) rollout restart deploy/wg-ironic-proxy
+	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/wg-ironic-proxy --timeout=300s
+
+lab-up: # bring up the lab cluster end-to-end (kind + Krateo + WG/proxy + RestDefinitions)
+	$(MAKE) KIND_CLUSTER=$(LAB_CLUSTER) KUBECONFIG_FILE=local/kubeconfig.$(LAB_CLUSTER) \
+		kind-up krateo-up lab-tunnel-up restdef-up
+
+lab-down: # delete the lab kind cluster (does NOT touch your default kubeconfig)
+	-kind delete cluster --name $(LAB_CLUSTER) --kubeconfig local/kubeconfig.$(LAB_CLUSTER)
 
 local-up: kind-up ironic-up krateo-up restdef-up   # full local stack: kind + Ironic + Krateo + RestDefinitions
 

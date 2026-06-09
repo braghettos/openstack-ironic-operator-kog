@@ -8,3 +8,7 @@ clouds.yaml
 *clouds*.yaml
 *openrc*
 *.rc
+# WireGuard configs contain private keys
+local/wireguard/
+*.wg.conf
+wg*.conf
