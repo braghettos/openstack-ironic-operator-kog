@@ -63,10 +63,19 @@ components:
       properties:
         target:
           type: string
-          description: manage | provide | active | deleted | inspect | rebuild
+          description: "manage | provide | active | deleted | inspect | rebuild | clean"
         configdrive:
           type: object
           additionalProperties: true
+        clean_steps:
+          # Required when target=clean. Each step is {interface, step, args?}. interface is
+          # one of raid, bios, deploy, management. step is the operation name (e.g.
+          # raid/create_configuration, bios/apply_configuration). args is a per-step dict.
+          # Source: https://docs.openstack.org/api-ref/baremetal/?expanded=#change-node-provision-state
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     NodeState:
       type: object
       properties:

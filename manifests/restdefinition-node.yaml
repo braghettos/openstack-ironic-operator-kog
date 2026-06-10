@@ -24,8 +24,23 @@ spec:
       - provision_state
       - power_state
       - target_provision_state
-    excludedSpecFields:
-      - uuid
+      # Inspection outputs — surfaced in Node CR status so the baremetal-discovery
+      # composition (or any operator/policy) can read inventory + completion timestamp
+      # without going through openstacksdk. `properties` is the freeform object Ironic
+      # populates after inspect (cpus, memory_mb, local_gb, cpu_arch, capabilities, ...).
+      - properties
+      - inspection_started_at
+      - inspection_finished_at
+      # instance_info: surfaced so the baremetal-host chart's transition-undeploy can detect
+      # spec.image vs deployed-image drift and trigger a redeploy without manual intervention.
+      - instance_info
+      # automated_clean: surfaced so the chart's pre-delete Job can observe the current
+      # cleanup mode setting (PATCHes it before driving target=deleted).
+      - automated_clean
+    # uuid is writable on POST in Ironic (the conductor uses the supplied value instead of
+    # generating one). We DROP the excludedSpecFields entry for it so callers can pin a UUID
+    # via spec.uuid — required when other Nodes reference this one via parent_node and we
+    # need stable IDs across re-enroll. status.uuid still mirrors what Ironic returned.
     configurationFields:
       - fromOpenAPI:
           name: X-Ironic-Endpoint
@@ -54,10 +69,18 @@ spec:
       - action: create
         method: POST
         path: /v1/nodes
-      # No `update` verb: Ironic PATCH expects RFC-6902 JSON-Patch and clears instance_info
-      # during cleaning, so KOG's update would 400 and freeze the Node CR in ReconcileError
-      # (stalling status.provision_state, which the composition's lookup depends on). This
-      # operator never updates a node in place - it is create + provision transitions + delete.
+      # `update` verb is enabled now that the keystone-ironic-proxy auto-translates the plain
+      # JSON body KOG sends into RFC-6902 JSON-Patch (see `_diff_to_json_patch` in
+      # scripts/keystone-ironic-proxy.py). Without that translator Ironic returns 400
+      # "Adding a non-existent attribute" or similar on a merge-style body.
+      # Caveat: PATCH during `cleaning` clears instance_info — keep `update` calls limited
+      # to states where it is safe (manageable / available / active) by gating from the chart.
+      - action: update
+        method: PATCH
+        path: /v1/nodes/{uuid}
+        requestFieldMapping:
+          - inPath: uuid
+            inCustomResource: spec.name
       - action: delete
         method: DELETE
         path: /v1/nodes/{uuid}

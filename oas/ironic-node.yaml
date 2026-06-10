@@ -159,16 +159,43 @@ components:
           additionalProperties: true
         maintenance:
           type: boolean
+        automated_clean:
+          type: boolean
+          nullable: true
+          description: |
+            Whether Ironic runs its standard cleaning pass after a delete (target=deleted).
+            null = use ironic.conf [conductor]automated_clean default (usually true).
+            false = skip the cleaning pass entirely; node goes deleted->available with no
+                    IPA boot. Used by chart's pre-delete Job when spec.undeploy.mode=none.
+            Available since API microversion 1.47.
         network_interface:
           type: string
         resource_class:
           type: string
+        parent_node:
+          type: string
+          description: UUID of the parent Node when this Node is a child (e.g. blade under an enclosure).
+        inspection_started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp set by Ironic when an inspection starts.
+        inspection_finished_at:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Timestamp set by Ironic when an inspection finishes successfully. Empty until the first inspect runs; populated from then on.
 
     NodeCreate:
       type: object
       required:
         - driver
       properties:
+        # uuid is optional on POST; when set, Ironic uses it instead of generating one.
+        # Required when other Nodes reference this Node via parent_node and we need stable IDs.
+        uuid:
+          type: string
+          format: uuid
         name:
           type: string
         driver:
@@ -189,8 +216,26 @@ components:
           type: string
         resource_class:
           type: string
+        parent_node:
+          type: string
+          description: UUID of the parent Node when this Node is a child (e.g. blade under an enclosure).
+        maintenance:
+          type: boolean
+          description: When true, suspends Ironic auto-actions (power monitoring etc.) for the node.
+        automated_clean:
+          type: boolean
+          nullable: true
+          description: |
+            When false, Ironic skips the standard cleaning pass between deleted and available
+            (no IPA boot). Used by the chart pre-delete Job when spec.undeploy.mode=none.
+            null = use ironic.conf [conductor]automated_clean default (usually true).
+            Available since API microversion 1.47.
 
     NodePatch:
+      # Fields KOG/RDC is allowed to PATCH in a Node. The keystone-ironic-proxy translates
+      # the plain JSON body into RFC-6902 JSON-Patch before forwarding to Ironic, so this
+      # schema only governs which fields KOG considers "updateable", NOT the wire format.
+      # Add fields here as we want them to flow back from Node CR spec -> Ironic.
       type: object
       properties:
         name:
@@ -207,5 +252,14 @@ components:
         extra:
           type: object
           additionalProperties: true
+        resource_class:
+          type: string
+        network_interface:
+          type: string
+        description:
+          type: string
         maintenance:
           type: boolean
+        automated_clean:
+          type: boolean
+          nullable: true
