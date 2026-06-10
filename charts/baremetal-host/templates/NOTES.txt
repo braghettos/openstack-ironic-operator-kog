@@ -1,0 +1,23 @@
+BaremetalHost {{ .Release.Name }} applied for node {{ .Values.nodeName }}.
+
+State flow:
+  registering  -> enroll -> manage -> manageable
+  {{- if .Values.enableInspection }}
+  inspecting   -> manageable + node.status.properties + inspection_finished_at populated
+  {{- end }}
+  available    -> provide -> cleaning -> available
+  {{- if and (hasKey .Values "image") .Values.image.source }}
+  provisioning -> deploy -> wait call-back -> active (image: {{ .Values.image.source }})
+  {{- else }}
+  (no image set; host stops at `available`)
+  {{- end }}
+{{- if hasKey .Values "online" }}
+
+Power: {{ ternary "ON" "OFF" .Values.online }}
+{{- end }}
+
+Inspect the live host:
+  kubectl -n {{ include "baremetal-host.nodeNamespace" . }} get node.baremetal.ogen.krateo.io {{ .Values.nodeName }} -o jsonpath='{.status.provision_state}'
+  kubectl -n {{ include "baremetal-host.nodeNamespace" . }} get node.baremetal.ogen.krateo.io {{ .Values.nodeName }} -o jsonpath='{.status.properties}'
+
+Edit the BaremetalHost spec — the operator reconciles drift via the JSON-Patch proxy.

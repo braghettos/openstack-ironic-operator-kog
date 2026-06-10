@@ -1,0 +1,32 @@
+# Port CRs (Ironic requires >=1 port for inspect AND deploy validation). nodeUuid must be
+# pinned so the Port's node_uuid link is known before Ironic returns the auto-generated value.
+{{- if and .Values.nodeName .Values.ports .Values.nodeUuid }}
+{{- $top := . -}}
+{{- range $i, $p := .Values.ports }}
+{{- $port := $p }}{{- if kindIs "string" $p }}{{ $port = dict "address" $p }}{{ end }}
+{{- $addr := required "port.address (MAC) is required" $port.address }}
+{{- $safe := regexReplaceAll "[^a-z0-9]+" (lower $addr) "-" | trimAll "-" }}
+---
+apiVersion: {{ include "baremetal-host.nodeApiVersion" $top }}
+kind: Port
+metadata:
+  name: {{ printf "%s-%s" $top.Values.nodeName $safe | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "baremetal-host.nodeNamespace" $top }}
+  labels:
+    app.kubernetes.io/name: baremetal-host
+    app.kubernetes.io/instance: {{ $top.Release.Name }}
+    baremetal.ogen.krateo.io/node: {{ $top.Values.nodeName | quote }}
+spec:
+  configurationRef:
+    name: {{ include "baremetal-host.configName" $top }}
+    namespace: {{ include "baremetal-host.nodeNamespace" $top }}
+  address: {{ $addr | quote }}
+  node_uuid: {{ $top.Values.nodeUuid | quote }}
+  {{- if hasKey $port "pxe_enabled" }}
+  pxe_enabled: {{ $port.pxe_enabled }}
+  {{- end }}
+  {{- with $port.physical_network }}
+  physical_network: {{ . | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

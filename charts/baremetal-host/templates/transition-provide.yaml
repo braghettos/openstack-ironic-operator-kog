@@ -1,0 +1,26 @@
+# manageable -> available. Gated so it does NOT race transition-inspect when
+# enableInspection is true and inspection hasn't completed yet.
+{{- if .Values.nodeName }}
+{{- if not (include "baremetal-host.detached" .) }}
+{{- if eq (include "baremetal-host.provisionState" .) "manageable" }}
+{{- $okToProvide := true }}
+{{- if .Values.enableInspection }}
+{{- if not (include "baremetal-host.inspectionFinishedAt" .) }}{{- $okToProvide = false }}{{- end }}
+{{- end }}
+{{- if $okToProvide }}
+apiVersion: {{ include "baremetal-host.nodeApiVersion" . }}
+kind: NodeProvision
+metadata:
+  name: {{ .Release.Name }}-provide
+  namespace: {{ include "baremetal-host.nodeNamespace" . }}
+  labels:
+    app.kubernetes.io/name: baremetal-host
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    baremetal.ogen.krateo.io/transition: provide
+spec:
+  node_id: {{ .Values.nodeName | quote }}
+  target: provide
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,136 @@
+# baremetal-host chart values - the unified Ironic node composition.
+
+# --- Identity & BMC ---
+nodeName: ""
+nodeUuid: ""           # optional pinned UUID
+parentNode: ""         # optional parent (e.g. enclosure)
+driver: ipmi
+driver_info: {}        # ipmi_* or redfish_* keys
+nodeNamespace: ""      # defaults to release namespace
+
+# --- Ports (Ironic requires >=1 port for inspect + deploy validation) ---
+# [{address: "00:60:2f:33:81:01", pxe_enabled: true}, ...]
+ports: []
+
+# --- Optional inspection step ---
+# When true, runs `target: inspect` after manageable; inspection results land in the Node CR's
+# status (properties + inspection_finished_at). transition-provide gates on the inspect CR's
+# existence so we don't loop.
+enableInspection: false
+
+# --- Provisioning (set to deploy an image) ---
+# When `image.source` is set, the node walks available -> deploy -> active.
+# When unset, the node stops at `available` (or `manageable` if inspection ran without a
+# provide step — see enableInspection caveat above).
+image: {}
+  # source: "http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2"
+  # checksum: "http://172.19.74.1:8089/CHECKSUM"
+  # checksum_type: "sha256"  # optional
+  # format: "qcow2"          # optional
+  # root_device:             # optional disk-selection hints (Ironic root_device dict)
+  #   wwn: "0x5000c500..."
+  #   serial: "..."
+  #   size: 500
+
+# Config Drive for cloud-init. Assembled by `baremetal-host.instanceInfo` into
+# instance_info.config_drive = {meta_data, user_data, network_data}, the exact shape Ironic
+# expects (mirrors `openstack/latest/{meta_data.json, user_data, network_data.json}` on the
+# generated ISO). At least one of metaData/userData/networkData must be set; otherwise no
+# config_drive is emitted.
+configDrive: {}
+  # metaData:
+  #   uuid: 6b9be9c2-1234-49b0-bc8e-c0ffeec0ffee   # cloud-init reads this as instance-id
+  #   hostname: blade03
+  # userData: |
+  #   #cloud-config
+  #   users:
+  #     - name: ironic
+  #       plain_text_passwd: baremetal
+  #       lock-passwd: false
+  #       sudo: ['ALL=(ALL) NOPASSWD:ALL']
+  #       shell: /bin/bash
+  #       ssh_authorized_keys:
+  #         - ssh-ed25519 AAAA... your-key
+  # networkData:
+  #   links:
+  #     - {id: enp1s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:01"}
+  #     - {id: enp2s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:02"}
+  #   networks:
+  #     - {id: enp1s0, network_id: enp1s0, type: ipv4_dhcp, link: enp1s0}
+  #     - {id: enp2s0, network_id: enp2s0, type: ipv4_dhcp, link: enp2s0}
+  #   services:
+  #     - {type: dns, address: "8.8.8.8"}
+
+# --- Maintenance mode ---
+# When true, Ironic suspends power-state monitoring and other automatic actions on the node
+# (kept-alive heartbeats, periodic agent checks, etc.). Use during hardware servicing so
+# Ironic's auto-recovery doesn't fight whatever you're doing at the BMC. Propagates as a
+# spec.maintenance edit on the Node CR -> RDC PATCHes Ironic via the JSON-Patch translator.
+maintenance: false
+
+# --- Detached mode ---
+# When true, the chart skips ALL state-machine transitions (manage/inspect/provide/deploy/
+# undeploy AND power). The Node + Port CRs remain present in k8s (so the host stays addressable)
+# but Ironic state is not driven by this composition. Mirror of metal3's `detached` annotation:
+# use to hand off control without unregistering the host.
+detached: false
+
+# --- Power state ---
+# true=power on, false=power off, unset=don't manage. Each flip renames the NodePower CR
+# (suffix encodes the target), so KOG sees a fresh resource and fires PUT exactly once.
+# online: true
+
+# --- Clean steps (RAID, BIOS, firmware, etc.) ---
+# When non-empty AND the node is `manageable`, the chart renders a NodeProvision with
+# target=clean and these steps. Ironic runs them in order. Common shapes:
+#   - {interface: raid, step: create_configuration, args: {logical_disks: [...]}}
+#   - {interface: bios, step: apply_configuration, args: {settings: [{name, value}]}}
+#   - {interface: management, step: clear_job_queue}
+#
+# Each cleanSteps EDIT generates a new NodeProvision name (the sha256 hash of the array is
+# embedded), so KOG fires a fresh PUT for the new desired config. The old CR persists in
+# Pending until pruned on the next state change.
+#
+# To run clean steps on an `active` node, set cleanSteps AND ALSO drop spec.image.source —
+# the chart will undeploy first, then clean during manageable, then re-deploy if image is
+# put back. Pure-cleaning workflows (no image) just leave image unset.
+cleanSteps: []
+
+# --- Network data (pre-provisioned OS view) ---
+# Merged into instance_info.network_data — Ironic exposes this to cloud-init / config-drive
+# so the deployed OS sees interfaces/routes/services as static config. Distinct from
+# configDrive.networkData, which is what the BOOTLOADER's cloud-init sees during deploy.
+networkData: {}
+  # links:    [{id, type, mac_address, ...}]
+  # networks: [{id, type, link, ip_address, netmask, ...}]
+  # services: [{type, address}]
+
+# --- Undeploy ---
+# Set undeploy=true to drive the blade from `active` back to `available` via the
+# composition's normal reconcile loop. transition-undeploy.yaml renders a NodeProvision
+# with target=deleted whenever (undeploy=true AND provision_state=active). After Ironic
+# walks `active -> deleted -> cleaning -> available`, you can safely either:
+#   - Re-deploy by clearing this flag + setting a new spec.image, or
+#   - kubectl delete the BaremetalHost — KOG's DELETE /v1/nodes/{id} round-trips cleanly
+#     once Ironic is at `available` (would have 409'd while active).
+#
+# This is NOT triggered by deleting the BaremetalHost CR — cdc's delete handler calls
+# helm uninstall directly, with no re-render of the chart, so the state-machine drive
+# has to happen via the normal upgrade-on-reconcile path. Document this contract:
+# "delete BH = remove from k8s, doesn't touch Ironic. Undeploy = release Ironic."
+undeploy: false
+
+# undeployMode controls Ironic's cleanup pass between `deleted` and `available`. Applied
+# proactively via spec.automated_clean on the Node CR (see templates/node.yaml) so it's
+# in place before the target=deleted PUT fires.
+# - full (default): automated_clean stays at ironic.conf [conductor]automated_clean
+#   default (usually true) — full IPA boot, standard clean_steps (disk erase, etc.).
+# - none: spec.automated_clean=false — skip the cleaning pass entirely. Node goes
+#   deleted->available in seconds. Disks keep tenant data. Use in private labs only.
+undeployMode: full
+
+# --- Krateo plumbing ---
+# Singleton NodeConfiguration the chart points spec.configurationRef at (see
+# manifests/nodeconfiguration-ironic.yaml).
+configurationRef:
+  name: ironic-endpoint

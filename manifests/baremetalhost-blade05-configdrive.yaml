@@ -1,0 +1,61 @@
+# End-to-end deploy of blade05 with a cloud-init config drive.
+#
+# The chart's `baremetal-host.instanceInfo` helper translates spec.configDrive ->
+# instance_info.config_drive = {meta_data, user_data, network_data} — Ironic builds the
+# config-drive ISO from these and attaches it on deploy. Format mirrors the OpenStack
+# metadata service layout (`openstack/latest/{meta_data.json, user_data, network_data.json}`).
+#
+# Boot-time effect: cloud-init reads the drive, creates user `ironic` with password
+# `baremetal`, configures both NICs for DHCP, sets hostname=blade05.
+---
+apiVersion: composition.krateo.io/v0-3-3
+kind: BaremetalHost
+metadata:
+  name: blade05
+  namespace: openstack
+spec:
+  nodeName: blade05
+  nodeUuid: ef74ac60-e7f5-44be-9b7e-358822dc6b9d
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade05
+  ports:
+    - address: "00:60:2f:35:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:35:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  configDrive:
+    metaData:
+      uuid: ef74ac60-e7f5-44be-9b7e-358822dc6b9d
+      hostname: blade05
+    userData: |
+      #cloud-config
+      ssh_pwauth: true
+      chpasswd:
+        expire: false
+      users:
+        - name: ironic
+          plain_text_passwd: baremetal
+          lock-passwd: false
+          shell: /bin/bash
+          sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    networkData:
+      links:
+        - {id: enp1s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:01"}
+        - {id: enp2s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:02"}
+      networks:
+        - {id: enp1s0, network_id: enp1s0, type: ipv4_dhcp, link: enp1s0}
+        - {id: enp2s0, network_id: enp2s0, type: ipv4_dhcp, link: enp2s0}
+      services:
+        - {type: dns, address: "8.8.8.8"}
+  online: true
+  undeploy: true

@@ -1,0 +1,35 @@
+# available -> active. ONLY rendered when an image.source is set; without an image the host
+# stops at `available` (metal3 calls this "ready").
+#
+# spec.configdrive carries the cloud-init config drive in the canonical dict form
+# {meta_data, user_data, network_data}. This is the documented Ironic path (PUT
+# /v1/nodes/{id}/states/provision with `configdrive`); microversion >= 1.60 builds the
+# ISO server-side. Do NOT put configdrive on instance_info — Ironic looks up the key
+# `configdrive` (no underscore) under instance_info as a secondary path, but the provision
+# body is the supported one and avoids stale state after future redeploys.
+{{- if .Values.nodeName }}
+{{- if not (include "baremetal-host.detached" .) }}
+{{/* Do NOT fire deploy when spec.undeploy=true. Without this gate, the chart would loop:
+     available -> deploy -> active -> undeploy -> available -> deploy ... forever. The
+     undeploy field is a "hold at available" signal; deploy should respect it. */}}
+{{- if and (eq (include "baremetal-host.provisionState" .) "available") (hasKey .Values "image") .Values.image.source (not .Values.undeploy) }}
+{{- $configdrive := include "baremetal-host.configdrive" . }}
+apiVersion: {{ include "baremetal-host.nodeApiVersion" . }}
+kind: NodeProvision
+metadata:
+  name: {{ .Release.Name }}-deploy
+  namespace: {{ include "baremetal-host.nodeNamespace" . }}
+  labels:
+    app.kubernetes.io/name: baremetal-host
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    baremetal.ogen.krateo.io/transition: deploy
+spec:
+  node_id: {{ .Values.nodeName | quote }}
+  target: active
+  {{- with $configdrive }}
+  configdrive:
+    {{- . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

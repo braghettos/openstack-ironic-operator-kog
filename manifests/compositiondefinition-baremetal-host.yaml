@@ -1,0 +1,12 @@
+# CompositionDefinition for the unified baremetal-host chart. Replaces the discovery +
+# lifecycle split with a single BaremetalHost CRD (metal3-equivalent surface).
+---
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: baremetal-host
+  namespace: krateo-system
+spec:
+  chart:
+    url: http://chartrepo.openstack.svc.cluster.local/baremetal-host-0.3.3.tgz
+    version: "0.3.3"

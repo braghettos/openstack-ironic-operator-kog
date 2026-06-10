@@ -1,0 +1,41 @@
+# active -> available, when spec.undeploy=true.
+#
+# Mirrors how every other state transition in this chart works: the chart renders a
+# NodeProvision CR for the current desired transition, KOG fires the PUT against Ironic
+# exactly once, cdc's next reconcile re-renders based on the new state. No Helm hooks,
+# no Job, no special RBAC — same composition-driven pattern as transition-deploy /
+# transition-provide / transition-clean.
+#
+# Why a spec field (not BH CR deletion) drives this:
+#   cdc's delete handler calls helm uninstall directly without re-rendering the chart,
+#   so a `kubectl delete bh <name>` cannot drive a state-machine walk through Ironic —
+#   it would just uninstall, KOG would fire DELETE /v1/nodes/{id} against an active
+#   node, Ironic would 409, and the node would orphan. Decoupling undeploy from BH CR
+#   deletion lets the chart's normal reconcile-render-render loop do its job.
+#
+# Two-step UX:
+#   1. kubectl patch baremetalhost blade05 --type=merge -p '{"spec":{"undeploy":true}}'
+#      -> chart renders this CR -> KOG PUT target=deleted -> Ironic walks to available
+#   2. (optional) kubectl delete baremetalhost blade05
+#      -> KOG DELETE /v1/nodes/{id} now succeeds (node is at `available`)
+#
+# Cleanup mode is governed by spec.undeployMode (full | none), via spec.automated_clean
+# on the Node CR (see templates/node.yaml).
+{{- if .Values.nodeName }}
+{{- if not (include "baremetal-host.detached" .) }}
+{{- if and .Values.undeploy (eq (include "baremetal-host.provisionState" .) "active") }}
+apiVersion: {{ include "baremetal-host.nodeApiVersion" . }}
+kind: NodeProvision
+metadata:
+  name: {{ printf "%s-undeploy" .Release.Name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ include "baremetal-host.nodeNamespace" . }}
+  labels:
+    app.kubernetes.io/name: baremetal-host
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    baremetal.ogen.krateo.io/transition: undeploy
+spec:
+  node_id: {{ .Values.nodeName | quote }}
+  target: deleted
+{{- end }}
+{{- end }}
+{{- end }}

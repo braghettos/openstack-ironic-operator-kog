@@ -1,0 +1,19 @@
+# enroll -> manageable
+{{- if .Values.nodeName }}
+{{- if not (include "baremetal-host.detached" .) }}
+{{- if eq (include "baremetal-host.provisionState" .) "enroll" }}
+apiVersion: {{ include "baremetal-host.nodeApiVersion" . }}
+kind: NodeProvision
+metadata:
+  name: {{ .Release.Name }}-manage
+  namespace: {{ include "baremetal-host.nodeNamespace" . }}
+  labels:
+    app.kubernetes.io/name: baremetal-host
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    baremetal.ogen.krateo.io/transition: manage
+spec:
+  node_id: {{ .Values.nodeName | quote }}
+  target: manage
+{{- end }}
+{{- end }}
+{{- end }}

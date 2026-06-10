@@ -1,0 +1,31 @@
+# End-to-end autonomous test manifest. Uses blade02 (slot empty in Ironic) with a
+# freshly-generated UUID (to avoid the earlier UUID tombstone). Apply this and
+# nothing else — the operator drives every transition autonomously.
+---
+apiVersion: composition.krateo.io/v0-1-3
+kind: BaremetalHost
+metadata:
+  name: blade02
+  namespace: openstack
+spec:
+  nodeName: blade02
+  nodeNamespace: openstack
+  nodeUuid: 0afca13f-162a-4852-89ba-4e03bf59ba21
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade02
+  ports:
+    - address: "00:60:2f:32:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:32:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  online: true

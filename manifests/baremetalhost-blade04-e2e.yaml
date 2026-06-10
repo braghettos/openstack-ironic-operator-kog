@@ -1,0 +1,31 @@
+# End-to-end autonomous test on blade04. blade04 is owned by us in Ironic and currently at
+# `manageable`, so the operator picks it up from there (no POST needed — RDC's findby on
+# /v1/nodes matches by name + UUID, then drives the rest of the state machine).
+---
+apiVersion: composition.krateo.io/v0-1-3
+kind: BaremetalHost
+metadata:
+  name: blade04
+  namespace: openstack
+spec:
+  nodeName: blade04
+  nodeNamespace: openstack
+  nodeUuid: 4ecc2ccf-c9d7-4e36-872b-1279b538609f
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade04
+  ports:
+    - address: "00:60:2f:34:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:34:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  online: true
