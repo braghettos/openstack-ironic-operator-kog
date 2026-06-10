@@ -1,0 +1,84 @@
+# Minimal OpenAPI 3.0 spec for the Ironic Node power action.
+# Models PUT /v1/nodes/{node_id}/states/power as a KOG "create" (fire-once via 202),
+# same shape as ironic-provision.yaml. One NodePower CR per intended target.
+# Ref: https://docs.openstack.org/api-ref/baremetal/#change-node-power-state
+openapi: 3.0.3
+info:
+  title: Ironic Node Power
+  description: Power-state transitions for a bare metal node
+  version: 1.0.0
+
+servers:
+  - url: http://ironic.openstack.svc.cluster.local:6385
+    description: Ironic API (proxied by keystone-ironic-proxy)
+
+paths:
+  /v1/nodes:
+    get:
+      summary: List nodes (findby — never matches on node_id, used as 202/Pending guard)
+      operationId: listNodes
+      responses:
+        '200':
+          description: List of nodes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeState'
+
+  /v1/nodes/{node_id}/states/power:
+    put:
+      summary: Set power target (create = fire-once transition)
+      operationId: setPowerState
+      parameters:
+        - $ref: '#/components/parameters/node_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PowerTarget'
+      responses:
+        '202':
+          description: Accepted (async; empty body)
+
+components:
+  parameters:
+    node_id:
+      name: node_id
+      in: path
+      required: true
+      description: Node UUID or name
+      schema:
+        type: string
+  schemas:
+    PowerTarget:
+      type: object
+      required:
+        - target
+      properties:
+        target:
+          type: string
+          description: "power on | power off | rebooting | soft power off | soft rebooting"
+        timeout:
+          type: integer
+          description: Seconds to wait for the BMC to confirm (optional, Ironic-default if omitted).
+    NodeState:
+      type: object
+      properties:
+        uuid:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        power_state:
+          type: string
+          readOnly: true
+        target_power_state:
+          type: string
+          readOnly: true

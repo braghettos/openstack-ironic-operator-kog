@@ -65,6 +65,11 @@ spec:
               add: ["NET_ADMIN"]
           env:
             - name: OS_CLOUD
+              # Project-scoped admin works for both node:create AND port:create when the
+              # microversion is recent enough (1.109+) — Ironic's RBAC matches the calling
+              # project against the node's `owner` field, so a project admin can create ports
+              # on nodes their own project owns. (Earlier tests at 1.99 returned 403 and
+              # forced a `system_scope: all` workaround; that's no longer needed.)
               value: "ironic"
             - name: OS_CLIENT_CONFIG_FILE
               value: /etc/openstack/clouds.yaml
@@ -73,7 +78,10 @@ spec:
             - name: LISTEN_PORT
               value: "8080"
             - name: IRONIC_API_VERSION
-              value: "1.81"
+              # Default microversion when the client (KOG/RDC) doesn't send one. 1.109 is
+              # what the openstackclient CLI defaults to; project-scoped RBAC for write ops
+              # has owner-based checks that work cleanly at this version.
+              value: "1.109"
           ports:
             - name: api
               containerPort: 8080

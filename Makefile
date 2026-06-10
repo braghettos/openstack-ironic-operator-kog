@@ -24,7 +24,7 @@ help:
 	@echo "Local test env (isolated kind cluster, never touches ~/.kube/config):"
 	@echo "  local-up       - Full local stack: kind + Ironic + Krateo + RestDefinition"
 	@echo "  krateo-up      - Install Krateo KOG (oasgen) + composition (core) providers"
-	@echo "  restdef-up     - Apply OAS ConfigMaps + both RestDefinitions (Node + NodeProvision)"
+	@echo "  restdef-up     - Apply OAS ConfigMaps + RestDefinitions (Node + Port + NodeProvision) + singleton Node/PortConfiguration"
 	@echo "  ironic-up      - (Re)deploy standalone Ironic into the kind cluster"
 	@echo "  provision-demo - Provision a sample fake node -> active (simulated reconciles via helm)"
 	@echo "  composition-up - Host the chart + install the CompositionDefinition (real cdc path)"
@@ -45,6 +45,8 @@ apply-oas:
 
 apply-restdef: apply-oas
 	kubectl apply -f manifests/restdefinition-node.yaml
+	kubectl apply -f manifests/restdefinition-port.yaml
+	kubectl apply -f manifests/restdefinition-provision.yaml
 
 deploy-chart:
 	helm upgrade --install baremetal-lifecycle ./charts/baremetal-lifecycle \
@@ -121,14 +123,22 @@ krateo-up:    # install Krateo KOG (oasgen-provider) + composition engine (core-
 		-n krateo-system --version $(KRATEO_OASGEN_VERSION) --wait --timeout 6m
 	$(KUBECTL) -n krateo-system get pods
 
-restdef-up:   # apply OAS ConfigMaps + both RestDefinitions (Node CRUD + NodeProvision action)
+restdef-up:   # apply OAS ConfigMaps + RestDefinitions (Node + Port + NodeProvision + NodePower) + endpoint singletons
 	KUBECTL="$(KUBECTL)" ./scripts/create-ironic-oas-configmap.sh $(IRONIC_NS)
-	$(KUBECTL) create configmap ironic-provision-oas -n $(IRONIC_NS) \
-		--from-file=provision.yaml=oas/ironic-provision.yaml --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	$(KUBECTL) apply -f manifests/restdefinition-node.yaml
+	$(KUBECTL) apply -f manifests/restdefinition-port.yaml
 	$(KUBECTL) apply -f manifests/restdefinition-provision.yaml
+	$(KUBECTL) apply -f manifests/restdefinition-power.yaml
 	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node --timeout=180s
+	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-port --timeout=180s
 	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node-provision --timeout=180s
+	$(KUBECTL) -n $(IRONIC_NS) wait --for=condition=Ready restdefinition/ironic-node-power --timeout=180s
+	# Singleton NodeConfiguration + PortConfiguration. Applied AFTER the RestDefinitions are
+	# Ready so the *Configuration CRDs exist. Kept OUT of charts/baremetal-lifecycle so RDC
+	# can still resolve spec.configurationRef during the per-node delete drain (see
+	# manifests/nodeconfiguration-ironic.yaml header for the orphan-on-uninstall race).
+	$(KUBECTL) apply -f manifests/nodeconfiguration-ironic.yaml
+	$(KUBECTL) apply -f manifests/portconfiguration-ironic.yaml
 
 # Provision a sample fake node. The state machine is lookup-driven: each reconcile renders the
 # NodeProvision CR for the node's current state. composition-dynamic-controller does this on its
@@ -146,17 +156,30 @@ provision-demo:
 	  sleep 12; \
 	done
 
-chart-host:   # package the baremetal-lifecycle chart and serve it in-cluster (for the CompositionDefinition)
+LIFECYCLE_CHART_VERSION ?= $(shell awk '/^version:/ {print $$2; exit}' charts/baremetal-lifecycle/Chart.yaml)
+DISCOVERY_CHART_VERSION ?= $(shell awk '/^version:/ {print $$2; exit}' charts/baremetal-discovery/Chart.yaml)
+HOST_CHART_VERSION      ?= $(shell awk '/^version:/ {print $$2; exit}' charts/baremetal-host/Chart.yaml)
+chart-host:   # package all three charts (baremetal-lifecycle + baremetal-discovery + baremetal-host) and serve them
 	helm package charts/baremetal-lifecycle -d dist/
+	helm package charts/baremetal-discovery -d dist/
+	helm package charts/baremetal-host      -d dist/
 	$(KUBECTL) -n $(IRONIC_NS) create deployment chartrepo --image=nginx:1.27-alpine --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	$(KUBECTL) -n $(IRONIC_NS) expose deployment chartrepo --port=80 --dry-run=client -o yaml | $(KUBECTL) apply -f - 2>/dev/null || true
 	$(KUBECTL) -n $(IRONIC_NS) rollout status deploy/chartrepo --timeout=120s
-	$(KUBECTL) -n $(IRONIC_NS) cp dist/baremetal-lifecycle-0.1.0.tgz \
-		$$($(KUBECTL) -n $(IRONIC_NS) get pod -l app=chartrepo -o jsonpath='{.items[0].metadata.name}'):/usr/share/nginx/html/baremetal-lifecycle-0.1.0.tgz
+	$(KUBECTL) -n $(IRONIC_NS) cp dist/baremetal-lifecycle-$(LIFECYCLE_CHART_VERSION).tgz \
+		$$($(KUBECTL) -n $(IRONIC_NS) get pod -l app=chartrepo -o jsonpath='{.items[0].metadata.name}'):/usr/share/nginx/html/baremetal-lifecycle-$(LIFECYCLE_CHART_VERSION).tgz
+	$(KUBECTL) -n $(IRONIC_NS) cp dist/baremetal-discovery-$(DISCOVERY_CHART_VERSION).tgz \
+		$$($(KUBECTL) -n $(IRONIC_NS) get pod -l app=chartrepo -o jsonpath='{.items[0].metadata.name}'):/usr/share/nginx/html/baremetal-discovery-$(DISCOVERY_CHART_VERSION).tgz
+	$(KUBECTL) -n $(IRONIC_NS) cp dist/baremetal-host-$(HOST_CHART_VERSION).tgz \
+		$$($(KUBECTL) -n $(IRONIC_NS) get pod -l app=chartrepo -o jsonpath='{.items[0].metadata.name}'):/usr/share/nginx/html/baremetal-host-$(HOST_CHART_VERSION).tgz
 
-composition-up: chart-host   # install the CompositionDefinition (core-provider generates the BaremetalLifecycle CRD)
+composition-up: chart-host   # install all three CompositionDefinitions
 	$(KUBECTL) apply -f manifests/compositiondefinition-baremetal-lifecycle.yaml
+	$(KUBECTL) apply -f manifests/compositiondefinition-baremetal-discovery.yaml
+	$(KUBECTL) apply -f manifests/compositiondefinition-baremetal-host.yaml
 	$(KUBECTL) -n krateo-system wait --for=condition=Ready compositiondefinition/baremetal-lifecycle --timeout=180s
+	$(KUBECTL) -n krateo-system wait --for=condition=Ready compositiondefinition/baremetal-discovery --timeout=180s
+	$(KUBECTL) -n krateo-system wait --for=condition=Ready compositiondefinition/baremetal-host --timeout=180s
 
 composition-demo: # create a BaremetalLifecycle instance; composition-dynamic-controller walks it enroll -> active
 	$(KUBECTL) apply -f manifests/baremetallifecycle-example.yaml
@@ -206,6 +229,9 @@ bifrost-down: # repoint the `ironic` Service back at the local fake Ironic
 # `ironic.openstack.svc.cluster.local:6385` and traffic exits via WG to the real Ironic.
 LAB_CLUSTER ?= ironic-lab
 WG_CONF     ?= local/wireguard/ironic-lab.conf
+# Project-scoped admin works at microversion 1.109+ for both node:create and port:create
+# (Ironic's RBAC matches the caller's project against node.owner). At 1.99 it returned 403
+# and needed a system_scope:all workaround; that's no longer the default.
 OS_CLOUD    ?= ironic
 
 lab-tunnel-up: # apply the wg+proxy Deployment+Service + Secrets/ConfigMap (kubeconfig from caller)

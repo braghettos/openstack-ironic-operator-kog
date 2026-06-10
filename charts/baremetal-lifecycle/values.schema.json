@@ -8,6 +8,14 @@
       "type": "string",
       "description": "Name of the bare metal node"
     },
+    "nodeUuid": {
+      "type": "string",
+      "description": "Optional pinned UUID for the Node (Ironic accepts uuid on POST). Required when ports are declared or other Nodes reference this one via parentNode."
+    },
+    "parentNode": {
+      "type": "string",
+      "description": "Optional UUID of the parent Node (e.g. blade -> enclosure)."
+    },
     "driver": {
       "type": "string",
       "enum": ["ipmi", "redfish", "fake-hardware"],
@@ -54,13 +62,13 @@
       "type": "string",
       "default": "quay.io/airshipit/openstack-client:2026.1-ubuntu_noble"
     },
-    "runInspect": {
-      "type": "boolean",
-      "default": false
-    },
     "nodeNamespace": {
       "type": "string",
       "description": "Namespace for Node CR (defaults to release namespace)"
+    },
+    "online": {
+      "type": "boolean",
+      "description": "Drive BMC power state. true = power on, false = power off. Omit to leave power unmanaged by this composition."
     }
   }
 }

@@ -2,14 +2,22 @@
 # Used by composition-dynamic-controller; override via Composition spec
 
 nodeName: ""
+# Optional pinned UUID. Set when other Nodes reference this one via parent_node and we need
+# stable IDs across re-enroll (Ironic accepts uuid on POST). Empty -> Ironic generates one.
+nodeUuid: ""
+# Optional parent Node UUID (e.g. blade -> enclosure).
+parentNode: ""
 driver: ipmi
-driver_info:
-  ipmi_address: "172.19.74.202"
-  ipmi_username: ironic
-  ipmi_password: ""
+# driver_info is passed straight to Ironic. Caller sets the keys their driver needs:
+#   ipmi:    ipmi_address, ipmi_username, ipmi_password [, ipmi_port]
+#   redfish: redfish_address, redfish_system_id, redfish_username, redfish_password
+#            [, redfish_verify_ca]
+# Default is {} so set-merges from values overrides do NOT drag stale keys across drivers.
+driver_info: {}
 
-# Ports (PXE MAC addresses) - created via Job when node is in enroll state
-# Format: [{ address: "9c:b6:54:b2:b0:ca" }] or simple list ["9c:b6:54:b2:b0:ca"]
+# Ports rendered as KOG Port CRs (one per entry). Address is the NIC MAC, pxe_enabled
+# selects the PXE boot interface. node_uuid is filled in from nodeUuid (must be set).
+# Format: [{ address: "00:60:2f:32:81:01", pxe_enabled: true }, ...]
 ports: []
 
 # instance_info required before deploy (available -> active)
@@ -27,7 +35,7 @@ configDrive: {}
 # Ironic API endpoint used by the provisioner Job (standalone/noauth).
 ironicApiUrl: "http://ironic.openstack.svc.cluster.local:6385"
 ironicAuthType: "none"
-ironicApiVersion: "1.81"
+ironicApiVersion: "1.99"
 
 # Per-transition wait timeout (seconds) passed to `openstack baremetal node ... --wait`.
 waitTimeout: 300
@@ -35,13 +43,16 @@ waitTimeout: 300
 # OpenStack client image used by the provisioner Job.
 openstackClientImage: "quay.io/airshipit/openstack-client:2026.1-ubuntu_noble"
 
-# When true, the provisioner Job runs `inspect` once (manageable -> inspecting -> manageable)
-# before `provide`. The Job drives the whole state machine in a single run, so no two-phase
-# helm upgrade is needed.
-runInspect: false
+# Power state control. Omit to NOT manage power from this composition (manual / external
+# control). Set to true to drive the BMC to `power on`, false for `power off`. Each flip
+# renders a freshly-named NodePower CR so KOG fires a new PUT /states/power.
+# online: true
 
 # Node CR namespace (where rest-dynamic-controller watches)
 nodeNamespace: ""
 
-# Configuration ref for Node CR (optional - for Ironic API auth)
-configurationRef: {}
+# Configuration ref for Node CR. Points at the namespace-scoped singleton NodeConfiguration
+# installed by `make restdef-up` (manifests/nodeconfiguration-ironic.yaml). Override only when
+# multiple Ironic endpoints coexist in the same namespace; otherwise leave the defaults.
+configurationRef:
+  name: ironic-endpoint

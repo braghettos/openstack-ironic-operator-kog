@@ -1,5 +1,7 @@
-# State manageable -> available. Rendered only while the Node is `manageable` (live via
+# State manageable -> available. Rendered while the Node is `manageable` (live via
 # `lookup`). Fires PUT .../states/provision {target: provide} once. Pruned once available.
+# Inspection is OUT OF SCOPE for this chart - run the baremetal-discovery composition
+# separately first if you need inventory before provisioning.
 {{- if .Values.nodeName }}
 {{- if eq (include "baremetal-lifecycle.provisionState" .) "manageable" }}
 apiVersion: {{ include "baremetal-lifecycle.nodeApiVersion" . }}

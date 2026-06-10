@@ -1,0 +1,35 @@
+# Singleton NodeConfiguration for the Ironic endpoint.
+#
+# Why this lives OUTSIDE the per-node baremetal-lifecycle chart:
+# rest-dynamic-controller resolves spec.configurationRef on every reconcile, including the
+# delete path - if the NodeConfiguration is gone when the Node delete event fires, RDC logs
+# "Configuration not found, real external resource will not be deleted" and orphans the node
+# in Ironic. When NodeConfiguration was bundled in the chart, helm uninstalled BOTH at once
+# and the Node CR's finalizer drained before RDC could read the NodeConfiguration.
+# Making this a namespace-singleton, applied by `make restdef-up`, removes the race entirely.
+#
+# Apply: kubectl apply -f manifests/nodeconfiguration-ironic.yaml
+---
+apiVersion: baremetal.ogen.krateo.io/v1alpha1
+kind: NodeConfiguration
+metadata:
+  name: ironic-endpoint
+  namespace: openstack
+spec:
+  # Only verbs declared by restdefinition-node.yaml are accepted here. We have findby/get/
+  # create/delete on the Node RestDefinition (no `update` - Ironic PATCH is JSON-Patch only
+  # and KOG doesn't speak JSON-Patch, so the chart never updates a Node in place).
+  configuration:
+    header:
+      create:
+        X-Ironic-Endpoint: "http://ironic.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.99"
+      get:
+        X-Ironic-Endpoint: "http://ironic.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.99"
+      delete:
+        X-Ironic-Endpoint: "http://ironic.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.99"
+      findby:
+        X-Ironic-Endpoint: "http://ironic.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.99"

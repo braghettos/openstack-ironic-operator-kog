@@ -9,12 +9,17 @@ baremetal-lifecycle chart helpers
 {{- .Release.Namespace -}}
 {{- end -}}
 {{- end -}}
-{{/* Name of the generated NodeConfiguration CR (holds the Ironic endpoint header). */}}
+{{/*
+Name of the NodeConfiguration the rendered Node CR points at. Always a namespace-scoped
+singleton (default: ironic-endpoint) installed by `make restdef-up`. NEVER bundled with the
+per-node release - if it were, helm uninstall would race RDC's delete handler and orphan the
+external Ironic node (see manifests/nodeconfiguration-ironic.yaml).
+*/}}
 {{- define "baremetal-lifecycle.configName" -}}
 {{- if and .Values.configurationRef .Values.configurationRef.name -}}
 {{- .Values.configurationRef.name -}}
 {{- else -}}
-{{- printf "%s-ironic-endpoint" .Release.Name -}}
+ironic-endpoint
 {{- end -}}
 {{- end -}}
 

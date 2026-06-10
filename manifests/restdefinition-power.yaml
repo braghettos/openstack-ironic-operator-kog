@@ -1,0 +1,41 @@
+# RestDefinition for the Ironic power-state action (one CR per power request).
+# Mirrors restdefinition-provision.yaml: KOG generates a NodePower CRD + RDC. Creating a
+# NodePower CR fires PUT /v1/nodes/{node_id}/states/power once (202 -> Pending guard
+# prevents re-fire, same pattern as NodeProvision).
+#
+# Use case: charts/baremetal-lifecycle (and later baremetal-host) render a NodePower CR
+# when spec.online toggles. The chart renames the CR when target changes so KOG sees a
+# fresh CR and the PUT fires a new time. Idempotency of "already powered on" is handled by
+# Ironic itself (returns 409 if already in the target state).
+#
+# Apply order:
+#   1. kubectl create configmap ironic-power-oas -n openstack --from-file=power.yaml=../oas/ironic-power.yaml
+#   2. kubectl apply -f restdefinition-power.yaml
+---
+apiVersion: ogen.krateo.io/v1alpha1
+kind: RestDefinition
+metadata:
+  name: ironic-node-power
+  namespace: openstack
+spec:
+  oasPath: configmap://openstack/ironic-power-oas/power.yaml
+  resourceGroup: baremetal.ogen.krateo.io
+  resource:
+    kind: NodePower
+    identifiers:
+      - node_id
+    additionalStatusFields:
+      - uuid
+      - power_state
+      - target_power_state
+    verbsDescription:
+      - action: findby
+        method: GET
+        path: /v1/nodes
+        identifiersMatchPolicy: OR
+      - action: create
+        method: PUT
+        path: /v1/nodes/{node_id}/states/power
+        requestFieldMapping:
+          - inPath: node_id
+            inCustomResource: spec.node_id
