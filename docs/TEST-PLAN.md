@@ -295,9 +295,17 @@ wait call-back, deploying}`. With that, `spec.undeploy=true` is a true
 Confirmed empirically: hand-PUT target=deleted against blade06 at
 `wait call-back` returned 202, walked to available in seconds. The chart's
 new template renders the same NodeProvision shape and KOG-RDC issues the
-same PUT — equivalence by construction. End-to-end re-validation (force-off
-mid-deploy then spec.undeploy=true) is a follow-up; the API-level proof
-suffices for the chart change.
+same PUT — equivalence by construction.
+
+End-to-end re-validation on blade06 the same afternoon: patched `undeploy:
+false` to trigger deploy (15:21:32) → `wait call-back` (15:21:48) → Redfish
+ForceOff (15:21:49 → 204) → patched `undeploy: true` (15:22:19) → Ironic
+back at `available` (15:22:33). Total stuck-state recovery: **45 seconds
+wall-clock** (most of it cdc reconcile latency between the patch and the
+chart's render). The chart's widened transition-undeploy gate fired
+exactly as designed: `wait call-back ∈ allowed states AND undeploy=true` →
+NodeProvision target=deleted → 202 → walk done. The original "30-60 min
+IPA timeout" caveat is fully avoided.
 
 Power-state finding from the original test still stands: Ironic does not
 actively poll the BMC during `wait call-back`, so chart's power enforcement
