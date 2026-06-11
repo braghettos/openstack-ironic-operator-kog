@@ -14,6 +14,19 @@ The system prompt embeds the non-obvious gotchas (port ordering, CRD
 version stripping, stuck CRD finalizer, `system_scope:all` workaround,
 no-manual-power-ops) and the triage recipe.
 
+## What it looks like
+
+![ironic-kog-expert answering "How does the BaremetalHost composition drive Ironic state transitions?"](./screenshots/ironic-kog-expert-chat.png)
+
+The agent picks apart the FSM exactly the way the blueprint is wired:
+`composition-dynamic-controller` reconciles the `BaremetalHost`, the chart
+re-renders with a Helm `lookup` reading live `provision_state` from the
+`nodes.baremetal.ogen.krateo.io` primitive, `transition-*.yaml` templates
+gate on that state and render a `NodeProvision` / `NodePower` primitive
+CR, and the Layer-1 `rest-dynamic-controller` for that primitive issues
+the Ironic REST call. Right pane shows the wired-in `k8s_*` tools the
+agent uses to inspect/patch resources on the cluster.
+
 ## Prerequisites
 
 ### 1. Install kagent
