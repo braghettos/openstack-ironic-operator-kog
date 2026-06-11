@@ -1,9 +1,95 @@
 # BaremetalHost composition — user guide
 
 Drive a bare-metal blade through Ironic's lifecycle with a single
-`composition.krateo.io/v0-3-4` BaremetalHost CR. The chart re-renders on every
-cdc reconcile; each transition fires automatically once the gates match live
-Ironic state.
+`composition.krateo.io/v0-3-4` BaremetalHost CR. The Krateo blueprint
+re-renders on every reconcile; each transition fires automatically once
+the gates match live Ironic state.
+
+## The two layers, named
+
+There is no Go controller in this repo. The lifecycle is driven by **two
+Krateo components stacked on top of each other**, and it helps to keep
+them straight in your head.
+
+### Layer 1 — `ironic-operator-kog` (the primitives)
+
+The KOG (Krateo Operator Generator) part. From an OpenAPI spec of the
+Ironic REST API (`oas/ironic-*.yaml`) we declare `RestDefinition` CRs
+(`manifests/restdefinition-*.yaml`). KOG's `oasgen-provider` consumes
+those and generates one CRD + one `rest-dynamic-controller` per resource:
+
+| CRD | Backed by | What 1 CR = |
+|---|---|---|
+| `nodes.baremetal.ogen.krateo.io` | `ironic-node-controller` | one Ironic node (CRUD on `/v1/nodes`) |
+| `ports.baremetal.ogen.krateo.io` | `ironic-port-controller` | one Ironic port (CRUD on `/v1/ports`) |
+| `nodeprovisions.baremetal.ogen.krateo.io` | `ironic-node-provision-controller` | one `PUT /v1/nodes/{id}/states/provision` (fires once per CR) |
+| `nodepowers.baremetal.ogen.krateo.io` | `ironic-node-power-controller` | one `PUT /v1/nodes/{id}/states/power` (fires once per CR) |
+| `portgroups.baremetal.ogen.krateo.io` | `ironic-port-controller` | one Ironic portgroup |
+| `allocations.baremetal.ogen.krateo.io` | (generated) | one Ironic allocation |
+| `deploytemplates.baremetal.ogen.krateo.io` | (generated) | one Ironic deploy template |
+
+These are **primitives**, not a state machine. Each CR represents one
+Ironic API call. There is no orchestration here — write a NodeProvision
+with `target: active` and KOG fires the PUT exactly once. Write a Node CR
+and KOG syncs it to Ironic via CRUD on `/v1/nodes`. The
+`keystone-ironic-proxy` sits in front of every API call to handle
+authentication + RFC-6902 JSON-Patch translation.
+
+This layer is `ironic-operator-kog` (the name of this repo). It's a thin,
+declarative wrapper over the Ironic REST API. You could use it on its
+own — write your own orchestrator that creates the right NodeProvision
+CRs in the right order. We chose not to write a controller; we chose
+Layer 2.
+
+### Layer 2 — the Krateo blueprint (the FSM driver)
+
+The Krateo blueprint is **the `baremetal-host` chart + its
+`CompositionDefinition`**, reconciled by `core-provider` and the
+per-version `composition-dynamic-controller` (`cdc`).
+
+```
+CompositionDefinition: baremetal-host (in krateo-system)
+   spec.chart.url: http://chartrepo.openstack.svc.cluster.local/baremetal-host-0.3.4.tgz
+   spec.chart.version: "0.3.4"
+                |
+                | core-provider reads the chart, generates the BaremetalHost CRD,
+                | spins up a cdc per chart version (e.g. baremetalhosts-v0-3-4-controller)
+                v
+BaremetalHost CR (in openstack ns) — what you write
+   spec.nodeName, spec.image, spec.online, spec.undeploy, ...
+                |
+                | cdc reconciles every ~3 minutes (and on every BH CR change).
+                | On each reconcile, cdc runs `helm template` with the BH spec
+                | as values, then helm upgrades. Templates use `lookup` to read
+                | live Ironic state via Layer 1's Node CR.
+                v
+Rendered Layer-1 CRs (in openstack ns)
+   Node + Port + NodeProvision (one per current transition) + NodePower
+                |
+                | KOG-RDC fires the API calls (one PUT per NodeProvision/NodePower,
+                | CRUD on Node + Port). keystone-ironic-proxy translates + auths.
+                v
+Ironic REST API
+                |
+                | state changes: enroll → manageable → ... → active
+                v
+Layer 1 Node CR's status updates with the new provision_state
+                |
+                | next cdc reconcile reads it via `lookup` → renders next transition
+```
+
+The FSM is **declared in the chart's seven `templates/transition-*.yaml`
+files**. Each template is one edge of the state machine, gated on a Helm
+`lookup` of the current Ironic state. cdc's continuous re-rendering is
+what makes this a *machine* and not a static rendering — the chart is
+re-evaluated on every reconcile, gates re-evaluated against live state,
+transitions appear and disappear as state evolves.
+
+**Read this twice if it didn't click**: there is no Go code orchestrating
+anything. core-provider does its standard "render the chart, apply the
+diff" job; the chart's templates *are* the state machine, expressed in
+Helm conditionals. Each NodeProvision CR rendered is an API call about
+to fire via the KOG primitive layer.
 
 ## State machine
 

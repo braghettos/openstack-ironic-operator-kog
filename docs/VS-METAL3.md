@@ -8,7 +8,7 @@ better operability in specific areas; metal3 wins in others. Choose accordingly.
 | Dimension | Krateo composition (this repo) | metal3 baremetal-operator |
 |---|---|---|
 | Core lifecycle parity | ✅ enroll → inspect → deploy → active → undeploy → available | ✅ same |
-| Implementation | Helm chart + cdc reconcile, ~600 lines of YAML | Go operator, ~50k LoC |
+| Implementation | `ironic-operator-kog` (~250 lines of OAS + RestDefinitions, generates CRDs + controllers) + a Krateo blueprint (~600 lines of Helm templates) reconciled by core-provider | Go operator, ~50k LoC |
 | Custom logic to extend | Edit YAML templates, bump chart version | Write Go, rebuild operator |
 | Stuck-state recovery time | **45 s** (verified gap 4 v0.3.4) | minutes-to-hours (IPA timeout or operator) |
 | Configdrive pipeline | ✅ validated end-to-end via SSH (gap 1+2) | ✅ |
@@ -20,19 +20,29 @@ better operability in specific areas; metal3 wins in others. Choose accordingly.
 | Operational footprint | Krateo + Ironic | metal3 (+ IronicCore) |
 | Track record | New (2026) | Mature (since 2018) |
 
-## Architectural difference, in one paragraph
+## Architectural difference, named precisely
 
 metal3's `baremetal-operator` is a Go controller (~50k LoC, `vendor/` tree included) that
-encodes Ironic's state machine in Go and reconciles `BareMetalHost` CRs. We declared the
-state machine in **seven Helm template files** (`charts/baremetal-host/templates/transition-*.yaml`),
-each one a `NodeProvision` CR rendered only when its Helm `lookup` gate matches the live
-Ironic state. Krateo's `composition-dynamic-controller` re-renders the chart on every
-reconcile and applies the diff. The KOG-generated `rest-dynamic-controller` translates each
-`NodeProvision` into a single PUT against the Ironic API. There's no Go controller for the
-BMH lifecycle.
+encodes Ironic's state machine in Go and reconciles `BareMetalHost` CRs.
 
-Effect: changing how a transition fires (e.g., gap 4's widened `transition-undeploy` gate
-that now recovers from `wait call-back`) is a 2-line YAML edit + a chart-version bump. The
+We don't have a Go controller. We have **two Krateo layers stacked**:
+
+| Layer | What it is | What it does | Lines of code we wrote |
+|---|---|---|---|
+| 1 — `ironic-operator-kog` (this repo's "primitives" side) | OAS specs → KOG `RestDefinition`s → auto-generated CRDs + `rest-dynamic-controller`s | Each CR (Node, Port, NodeProvision, NodePower, etc.) maps to ONE Ironic REST call. No state machine here, just a 1:1 declarative wrapper. | ~250 lines (OAS + RestDefinitions); the controllers + CRDs are generated |
+| 2 — Krateo blueprint (the FSM driver) | A `baremetal-host` Helm chart referenced from a `CompositionDefinition`, continuously reconciled by `core-provider` + per-version `composition-dynamic-controller` (cdc) | cdc renders the chart on every reconcile. Templates use Helm `lookup` to read live Ironic state via Layer 1's Node CR, then render the appropriate Layer-1 primitive CRs for the current transition. Re-rendering is what makes it a *machine*, not a static template. | ~600 lines (chart templates + values + schema) |
+
+So the state machine is **declared in 7 Helm template files**
+(`charts/baremetal-host/templates/transition-*.yaml`), each one an edge of the FSM gated on
+a Helm `lookup` of the current Ironic state. When the gate matches, that template renders
+a `NodeProvision` (or `NodePower`) primitive; KOG's `rest-dynamic-controller` fires it
+once as a single PUT against Ironic. State changes; next cdc reconcile reads it via
+`lookup`; renders the next transition. No Go code orchestrates this — core-provider does
+its standard "render + diff + apply" job, the chart templates *are* the FSM.
+
+Effect, in operational terms: changing how a transition fires (e.g., gap 4's widened
+`transition-undeploy` gate that now recovers from `wait call-back`) is a 2-line YAML edit
++ a chart-version bump + `helm package` + `kubectl apply -f CompositionDefinition`. The
 equivalent change in metal3 means a Go PR, bake new images, rolling upgrades.
 
 ## Where we're at parity (no compromise)
