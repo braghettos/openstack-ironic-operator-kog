@@ -40,23 +40,40 @@ kubectl get crd | grep nodes.baremetal.ogen.krateo.io
 cat <<'EOF' | kubectl apply -f -
 apiVersion: baremetal.ogen.krateo.io/v1alpha1
 kind: NodeConfiguration
-metadata: {name: ironic-config, namespace: openstack}
+metadata:
+  name: ironic-config
+  namespace: openstack
 spec:
   configuration:
     header:
-      create: {X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385", X-OpenStack-Ironic-API-Version: "1.81"}
-      get:    {X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385", X-OpenStack-Ironic-API-Version: "1.81"}
-      delete: {X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385", X-OpenStack-Ironic-API-Version: "1.81"}
-      findby: {X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385", X-OpenStack-Ironic-API-Version: "1.81"}
+      create:
+        X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.81"
+      get:
+        X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.81"
+      delete:
+        X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.81"
+      findby:
+        X-Ironic-Endpoint: "http://ironic-kog-proxy.openstack.svc.cluster.local:6385"
+        X-OpenStack-Ironic-API-Version: "1.81"
 ---
 apiVersion: baremetal.ogen.krateo.io/v1alpha1
 kind: Node
-metadata: {name: metal-a, namespace: openstack}
+metadata:
+  name: metal-a
+  namespace: openstack
 spec:
-  configurationRef: {name: ironic-config, namespace: openstack}
+  configurationRef:
+    name: ironic-config
+    namespace: openstack
   name: metal-a
   driver: ipmi
-  driver_info: {ipmi_address: "172.24.6.10", ipmi_username: admin, ipmi_password: secret}
+  driver_info:
+    ipmi_address: "172.24.6.10"
+    ipmi_username: admin
+    ipmi_password: secret
   resource_class: baremetal
 EOF
 ```

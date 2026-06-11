@@ -125,7 +125,9 @@ spec:
     hardwareRAIDVolumes:
       - sizeGibibytes: 1024
         level: "1"
-        physicalDisks: ["disk0", "disk1"]
+        physicalDisks:
+          - disk0
+          - disk1
 ```
 
 Ours: you have to write the raw Ironic clean_steps in `spec.cleanSteps`. Less ergonomic

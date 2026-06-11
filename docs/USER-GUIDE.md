@@ -159,21 +159,25 @@ spec:
     redfish_password: baremetal
     redfish_system_id: /redfish/v1/Systems/blade01
   ports:
-    - {address: "00:60:2f:01:81:01", pxe_enabled: true}
-    - {address: "00:60:2f:01:81:02", pxe_enabled: false}
+    - address: "00:60:2f:01:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:01:81:02"
+      pxe_enabled: false
   enableInspection: true
   image:
     source: http://images.local/debian-13.qcow2
     checksum: http://images.local/CHECKSUM
   configDrive:
-    metaData: {hostname: blade01}
+    metaData:
+      hostname: blade01
     userData: |
       #cloud-config
       ssh_pwauth: true
       users:
         - name: ops
           plain_text_passwd: ops
-          sudo: ['ALL=(ALL) NOPASSWD:ALL']
+          sudo:
+            - "ALL=(ALL) NOPASSWD:ALL"
   online: true
 ```
 
@@ -211,8 +215,10 @@ keystone-ironic-proxy uses your `clouds.yaml` to authenticate — credentials
 ```yaml
 spec:
   ports:
-    - {address: "00:60:2f:01:81:01", pxe_enabled: true}
-    - {address: "00:60:2f:01:81:02", pxe_enabled: false}
+    - address: "00:60:2f:01:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:01:81:02"
+      pxe_enabled: false
 ```
 
 One Port CR is created per entry. **The PXE-enabled port must boot from network**
@@ -271,11 +277,17 @@ spec:
         - touch /etc/cfgdrive-applied
     networkData:
       links:
-        - {id: enp1s0, type: phy, ethernet_mac_address: "00:60:2f:01:81:01"}
+        - id: enp1s0
+          type: phy
+          ethernet_mac_address: "00:60:2f:01:81:01"
       networks:
-        - {id: enp1s0, network_id: enp1s0, type: ipv4_dhcp, link: enp1s0}
+        - id: enp1s0
+          network_id: enp1s0
+          type: ipv4_dhcp
+          link: enp1s0
       services:
-        - {type: dns, address: "8.8.8.8"}
+        - type: dns
+          address: "8.8.8.8"
 ```
 
 The chart converts this to the canonical Ironic shape
@@ -359,8 +371,16 @@ spec:
 ```yaml
 spec:
   cleanSteps:
-    - {interface: raid, step: create_configuration, args: {logical_disks: [...]}}
-    - {interface: bios, step: apply_configuration, args: {settings: [...]}}
+    - interface: raid
+      step: create_configuration
+      args:
+        logical_disks:
+          # driver-specific shape (size, raid_level, ...)
+    - interface: bios
+      step: apply_configuration
+      args:
+        settings:
+          # driver-specific shape (name, value, ...)
 ```
 
 Fired during `cleaning` (manageable → clean → manageable). The shape is raw
