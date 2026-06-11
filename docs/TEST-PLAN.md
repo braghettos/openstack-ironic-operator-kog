@@ -274,6 +274,28 @@ chart drops the deploy intent silently.
 documented recovery (likely manual provision `target=manage` or a fresh undeploy
 attempt — to be discovered during the test).
 
+**STATUS — 2026-06-11: PASS (with architectural caveat).** Fired Redfish ForceOff
+on blade06 mid-`deploying`. BMC immediately reported `PowerState: Off`, but
+Ironic's cached `power_state` stayed at `"power on"` for the full 15-min
+observation window. Root cause: **Ironic does not actively poll the BMC during
+`wait call-back`** — it's waiting on IPA agent callback, not BMC heartbeats.
+Because cdc reads `status.power_state` from the Node CR (mirrors Ironic), the
+chart sees "power on" and correctly does nothing. **Zero spurious NodeProvision
+retries, zero new NodePower CRs, no silent intent drop.** Pass criteria fully
+met.
+
+Architectural insight to record: the chart's continuous power enforcement is
+bottlenecked on Ironic's view of the BMC, not the BMC's truth. Out-of-band
+power changes during deploy aren't observable until Ironic re-polls (which it
+won't until the IPA timeout fires, default ~30–60 min, surfacing
+`deploy failed` in `last_error`). That's the right architectural call — going
+around Ironic risks thrashing — but it means recovery from an out-of-band
+power kill is gated on Ironic's deploy timeout, not cdc reconcile cadence.
+
+Recovery used: `kubectl patch bh blade06 -p '{"spec":{"undeploy":true,
+"undeployMode":"none"}}'` drove blade06 out of the stuck wait-call-back back
+to available. Took ~3 min for cdc reconcile + Ironic walk.
+
 ### Test 5.1 — Concurrent deploys (gap 5)
 
 **Setup:** blade07 and blade08 both at enroll, identical image + configDrive (except
@@ -300,6 +322,15 @@ cdc panic.
 CRs from blade07 mention blade08's UUID (cross-talk).
 
 **Cleanup:** undeploy both serially (don't compound the test).
+
+**STATUS — 2026-06-11: PASS.** Applied blade07 at 12:57:05 and blade08 at 12:57:23
+(18s gap, manifest typo cost the strict 1s budget but they overlapped through every
+state). Both walked enroll → active concurrently with their IPA agents resident on
+the deploy network at the same time. NodeProvision and NodePower CRs are
+release-scoped and distinct (`blade07-x92x64vv-*` vs `blade08-2df98d82-*`); no
+collisions. **Zero proxy 503s.** cdc interleaved reconciles for both without
+panicking. No cross-talk (CRs reference their own UUIDs). Both reached active in
+~15min, in line with the single-blade budget — no contention slowdown observed.
 
 ### Test 3.1 — kubectl delete BH from active (gap 3)
 

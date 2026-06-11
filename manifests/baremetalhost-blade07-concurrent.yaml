@@ -1,0 +1,35 @@
+# Gap 5 (docs/TEST-PLAN.md): paired with blade08. Apply both within 1s,
+# observe two concurrent reconcile loops walking enroll -> active without
+# name collisions or proxy 503s.
+---
+apiVersion: composition.krateo.io/v0-3-3
+kind: BaremetalHost
+metadata:
+  name: blade07
+  namespace: openstack
+spec:
+  nodeName: blade07
+  nodeNamespace: openstack
+  nodeUuid: dfd4bf28-17c2-4141-83f8-361acdc7a633
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade07
+  ports:
+    - address: "00:60:2f:37:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:37:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  configDrive:
+    metaData:
+      uuid: dfd4bf28-17c2-4141-83f8-361acdc7a633
+      hostname: blade07
+  online: true

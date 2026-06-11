@@ -1,0 +1,34 @@
+# Test fixture for gap 4 (docs/TEST-PLAN.md): power flip during deploy.
+# - Apply this manifest with online: true and an image set.
+# - When Ironic transitions to `deploying` or `wait call-back`, an external
+#   actor hits Redfish to force the blade off.
+# - Observe whether the chart's transition-power renames + restores, or
+#   whether Ironic surfaces a terminal deploy failure.
+---
+apiVersion: composition.krateo.io/v0-3-3
+kind: BaremetalHost
+metadata:
+  name: blade06
+  namespace: openstack
+spec:
+  nodeName: blade06
+  nodeNamespace: openstack
+  nodeUuid: 2f05176e-4531-4a90-a3bd-eda84b517d57
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade06
+  ports:
+    - address: "00:60:2f:36:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:36:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  online: true
