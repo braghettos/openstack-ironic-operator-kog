@@ -16,22 +16,73 @@ no-manual-power-ops) and the triage recipe.
 
 ## Prerequisites
 
-1. kagent installed in the cluster (see
-   [kagent.dev/docs](https://kagent.dev)).
-2. A kagent `ModelConfig` named `kagent-default` in the `kagent` namespace,
-   or edit `spec.declarative.modelConfig` in
-   [`agent-ironic-expert.yaml`](./agent-ironic-expert.yaml) to point at
-   your own.
-3. The built-in `kagent-tool-server` `RemoteMCPServer` (shipped by
-   kagent) — used for the `k8s_*` tool family. The agent does not need a
-   custom MCP server because the operator surface is just Kubernetes
-   resources.
+### 1. Install kagent
+
+Pulled directly from the GHCR OCI registry — no `helm repo add` needed.
+Verified working on kagent v0.9.6.
+
+```bash
+KCFG=local/kubeconfig.ironic-lab            # your isolated kubeconfig
+KCTX=kind-ironic-lab                        # your cluster context
+
+kubectl --kubeconfig "$KCFG" --context "$KCTX" \
+  create ns kagent --dry-run=client -o yaml | \
+  kubectl --kubeconfig "$KCFG" --context "$KCTX" apply -f -
+
+helm --kubeconfig "$KCFG" --kube-context "$KCTX" \
+  upgrade --install kagent-crds \
+  oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
+  --version 0.9.6 --namespace kagent --wait --timeout 5m
+
+helm --kubeconfig "$KCFG" --kube-context "$KCTX" \
+  upgrade --install kagent \
+  oci://ghcr.io/kagent-dev/kagent/helm/kagent \
+  --version 0.9.6 --namespace kagent \
+  --set providers.default=anthropic \
+  --set providers.anthropic.model=claude-sonnet-4-6 \
+  --timeout 10m
+```
+
+Swap `providers.default` for `openAI`, `gemini`, `azureOpenAI`, or
+`ollama` if you don't want Anthropic. The helm chart auto-creates a
+`ModelConfig` named `default-model-config` matching whichever provider
+you picked — the Agent CRD here references that name.
+
+### 2. Populate the `ModelConfig`'s API key secret
+
+The auto-created `default-model-config` points at a secret the chart
+doesn't create for you (it can't — you own the key). For Anthropic the
+secret name is `kagent-anthropic` and the key is `ANTHROPIC_API_KEY`:
+
+```bash
+kubectl --kubeconfig "$KCFG" --context "$KCTX" \
+  create secret generic kagent-anthropic \
+  -n kagent \
+  --from-literal=ANTHROPIC_API_KEY='sk-ant-...your-key...'
+```
+
+Other providers map to different secret names — the chart prints them
+during install. Quick reference:
+
+| `providers.default` | secret name        | secret key            |
+|---------------------|--------------------|-----------------------|
+| `anthropic`         | `kagent-anthropic` | `ANTHROPIC_API_KEY`   |
+| `openAI`            | `kagent-openai`    | `OPENAI_API_KEY`      |
+| `gemini`            | `kagent-gemini`    | `GOOGLE_API_KEY`      |
+| `azureOpenAI`       | `kagent-azure-openai` | `AZUREOPENAI_API_KEY` |
+
+### 3. Built-in `kagent-tool-server`
+
+Shipped automatically by the kagent helm chart as a `RemoteMCPServer`.
+Provides the `k8s_*` tool family the Agent uses. No extra setup.
 
 ## Apply
 
 ```bash
-kubectl apply -f kagent/agent-ironic-expert.yaml
-kubectl -n kagent get agent ironic-kog-expert
+kubectl --kubeconfig "$KCFG" --context "$KCTX" \
+  apply -f kagent/agent-ironic-expert.yaml
+kubectl --kubeconfig "$KCFG" --context "$KCTX" \
+  -n kagent get agent ironic-kog-expert
 ```
 
 Then open the kagent UI (or the A2A endpoint) and ask one of the example

@@ -29,7 +29,7 @@ spec:
   type: Declarative
   declarative:
     runtime: python
-    modelConfig: kagent-default
+    modelConfig: default-model-config
     promptTemplate:
       dataSources:
         - kind: ConfigMap
