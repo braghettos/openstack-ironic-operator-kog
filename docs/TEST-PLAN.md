@@ -360,6 +360,18 @@ denial, with the error message naming the exact rule:
 Until the policy is relaxed (or we route this specific PATCH through the
 system-scoped token entry already in clouds.yaml), this test cannot run.
 
+**STATUS — 2026-06-11: PASS.** Policy was fixed in the lab on 2026-06-11. Wire-level
+verification first (curl PATCH `automated_clean: false` on blade01 returned 200,
+was 403 before). Then blade11 walked enroll → active with chart-side
+`automated_clean=false` flowing all the way through to the Ironic node attribute.
+Patched `spec.undeploy: true`; Ironic-side walk took **6 seconds** in `deleting`,
+then directly to `available`. Neither `cleaning` nor `clean wait` ever appeared —
+the IPA-boot cleaning pass was skipped exactly as documented. Compare to scenario
+B (`mode: full`): 4m11s walk with the full cleaning pass. ~40× faster, no IPA boot
+needed, disks not zeroed.
+
+Manifest used: `manifests/baremetalhost-blade11-mode-none.yaml`.
+
 **Setup:** blade11 at active, `undeployMode: none` in spec.
 
 **Action:** set `undeploy: true`.
