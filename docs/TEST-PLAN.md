@@ -227,6 +227,25 @@ cloud-init assertions fail (configdrive shape regression); transition loops.
 **Cleanup:** leave blade05 active for as long as needed by other tests, then
 undeploy + delete.
 
+**STATUS — 2026-06-11: PASS (on blade11, not blade05 — the userData swap test
+was structurally identical to bytes-different qcow2 per the plan's own
+"different cloud-init runcmd" allowance).** Round-1 deploy created
+`/etc/cfgdrive-round-1` + `/etc/cfgdrive-marker=round-1`; SSH from inside the
+wg-proxy pod to `172.19.74.168` (blade11's deployed enp1s0 IP) confirmed both.
+Then `undeploy: true` (mode=none, sub-minute walk per gap 11), edited manifest
+to round-2 marker, `undeploy: false`. Round-2 active in ~2min. SSH-re-verified:
+`/etc/cfgdrive-round-1` GONE, `/etc/cfgdrive-round-2` PRESENT,
+`/etc/cfgdrive-marker = round-2`, hostname=blade11, machine-id matches
+`configDrive.metaData.uuid` (cloud-init consumed it correctly), uptime=0min
+(fresh boot, no carry-over). The full pipeline `configDrive → canonical
+instance_info.configdrive → Ironic-built ISO → config-2 partition →
+cloud-init` is validated end-to-end.
+
+Side discovery: blades land on the wg-reachable `172.19.74/24` subnet via
+enp1s0; the dome jump path documented in the plan isn't strictly required.
+
+Manifest: `manifests/baremetalhost-blade11-mode-none.yaml`.
+
 ### Test 4.1 — Power flip during deploy (gap 4)
 
 **Setup:** blade06, freshly enrolled, image set so a deploy fires.

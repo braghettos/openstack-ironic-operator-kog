@@ -1,8 +1,9 @@
-# Gap 11 test fixture (docs/TEST-PLAN.md): drive blade11 to active with
-# undeployMode=none, then patch undeploy=true and verify the walk is sub-minute
-# (no cleaning pass) — vs the 4m11s "full" mode measured in scenario B.
-# The disable_cleaning Ironic policy was relaxed on 2026-06-11 so the chart's
-# automated_clean=false PATCH now succeeds instead of 403'ing.
+# Test fixtures used by docs/TEST-PLAN.md:
+# - Gap 11 (DONE): drive blade11 to active with undeployMode=none, patch
+#   undeploy=true, verify undeploy walk skips cleaning (4m11s -> 6s).
+# - Gaps 1+2: same blade exercises the bytes-different configdrive swap +
+#   cloud-init SSH verification via dome jump. Round 1 of the marker
+#   (/etc/cfgdrive-round-1) — bump to round-2 between deploys.
 ---
 apiVersion: composition.krateo.io/v0-3-3
 kind: BaremetalHost
@@ -30,6 +31,33 @@ spec:
   image:
     source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
     checksum: http://172.19.74.1:8089/CHECKSUM
+  configDrive:
+    metaData:
+      uuid: 3b90311c-3558-40e5-991a-04807d053980
+      hostname: blade11
+    userData: |
+      #cloud-config
+      ssh_pwauth: true
+      chpasswd:
+        expire: false
+      users:
+        - name: ironic
+          plain_text_passwd: baremetal
+          lock-passwd: false
+          shell: /bin/bash
+          sudo: ['ALL=(ALL) NOPASSWD:ALL']
+      runcmd:
+        - touch /etc/cfgdrive-round-2
+        - echo "round-2" > /etc/cfgdrive-marker
+    networkData:
+      links:
+        - {id: enp1s0, type: phy, ethernet_mac_address: "00:60:2f:3b:81:01"}
+        - {id: enp2s0, type: phy, ethernet_mac_address: "00:60:2f:3b:81:02"}
+      networks:
+        - {id: enp1s0, network_id: enp1s0, type: ipv4_dhcp, link: enp1s0}
+        - {id: enp2s0, network_id: enp2s0, type: ipv4_dhcp, link: enp2s0}
+      services:
+        - {type: dns, address: "8.8.8.8"}
   online: true
   undeploy: false
   undeployMode: none
