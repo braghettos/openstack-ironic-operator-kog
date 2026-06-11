@@ -101,6 +101,14 @@ render/control-plane only and can be slotted into any track's idle minutes.
 Validates the "vacuum storage version preserves all fields across composition
 apiVersion bumps" claim.
 
+**STATUS — 2026-06-11: SKIPPED (no real precondition).** The chart's git history has
+only ever shipped `0.3.3` as a public version; there's no historical `0.1.0` baseline
+to roll back to. The intermediate versions (`0.1.0` → `0.3.2`) existed only as
+in-session iterations during the chart's authoring and were never committed. A
+synthetic "old" chart would test our own ability to fake a precondition, not the
+real concern. Re-evaluate this test the first time we ship a backwards-incompatible
+chart bump that actual users have to ride through (~ `0.4.x` or `1.0.0` candidate).
+
 **Setup:** pin operator to composition apiVersion v0-1-0 (confirm against
 `manifests/compositiondefinition-baremetal-host.yaml` git history). Apply blade03 BH
 at that apiVersion with image + configDrive set, walk to active.
@@ -127,7 +135,8 @@ spec edit on the old apiVersion object fails admission.
 
 ### Test 8.1 — Idempotent re-apply (gap 8)
 
-**Setup:** blade03 active from test 6.1.
+**Setup:** blade03 active from test 6.1. *(Substituted blade04 since 6.1 was
+skipped — see status note above.)*
 
 **Action:** `kubectl apply -f` the same BH manifest 3 times back-to-back, with a 30s
 gap. Then wait 5 min.
@@ -145,29 +154,34 @@ gap. Then wait 5 min.
 **Fail:** any new NodeProvision created, or RDC fires a drift PATCH on a field that
 didn't change.
 
+**STATUS — 2026-06-11: PASS (chart side) with caveat (cdc side).**
+- Chart-render idempotency: PASS. Three identical applies on blade04 produced zero
+  new NodeProvisions and no spurious Ironic state changes. NodePower CR underwent
+  one expected rename (`power-on-from-unknown` → `power-on-from-on`) when the chart
+  first observed the live power state.
+- cdc apply-idempotency: NO. Each `kubectl apply --server-side` produced a new helm
+  release revision (`v1 → v2 → v3`). cdc treats every BH mutation — including
+  server-side-apply field-ownership churn — as a trigger for `helm upgrade`. This
+  is upstream cdc behavior, not a chart bug. README should note that audit-counting
+  helm revisions is not a useful idempotency signal on this stack.
+
+Side effect — applying gap 10 recovery procedure to blade04 was needed before this
+test could even start, because a previous session had left an orphan Node CR
+ownership annotation. Procedure worked exactly as documented in
+`docs/ORPHAN-RECOVERY.md`.
+
 ### Test 10.1 — Orphan-release detection & recovery (gap 10)
 
 Documentation-driven; the deliverable is a procedure, not a one-shot pass/fail.
 
-**Investigate:** review session transcripts and chart-inspector source for the
-symptom signature (likely: helm release `pending-install`/`pending-upgrade` stuck,
-or `secrets type=helm.sh/release.v1` orphaned with no matching CD reconcile).
-Confirm with the user which symptom matched the hand-fixes done this session.
-
-**Document:** minimum trigger reproduction (a cdc kill mid-install reliably
-reproduces? a chart-inspector pod OOM? a `values.schema.json` mismatch?). Without a
-known trigger, automated recovery is impossible.
-
-**Procedure:** write the detection check (one-liner kubectl that returns non-empty
-when an orphan exists) and the cleanup steps (which helm secrets to delete in which
-order, whether to bounce cdc, when it's safe to re-apply the BH).
-
-**Pass:** a tester following the doc can recover from a deliberately-induced orphan
-without ad-hoc commands.
-
-**Fail:** any "I had to look at logs and improvise" moment during the dry-run.
-
-Output also feeds test 7.1 (inspect failure may produce an orphan).
+**STATUS — 2026-06-11: DONE.** Procedure is at `docs/ORPHAN-RECOVERY.md`. Validated
+twice during this session: once on a real blade03 orphan (3 stranded helm release
+secrets, no BH CR), once on a real blade04 orphan that surfaced as a side effect of
+test 8.1 (Node CR retained helm-ownership annotations from a previous session's
+release). Both recovered without improvisation. Procedure includes detection
+one-liner, cleanup steps (strip ownership → delete orphan secrets → re-apply BH),
+and prevention rules (don't delete the CRD; don't force-clear cdc finalizers while
+cdc is mid-reconcile; don't delete + recreate the CD while BHs exist).
 
 ---
 
