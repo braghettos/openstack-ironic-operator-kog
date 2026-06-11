@@ -44,32 +44,62 @@ helm --kubeconfig "$KCFG" --kube-context "$KCTX" \
 ```
 
 Swap `providers.default` for `openAI`, `gemini`, `azureOpenAI`, or
-`ollama` if you don't want Anthropic. The helm chart auto-creates a
-`ModelConfig` named `default-model-config` matching whichever provider
-you picked — the Agent CRD here references that name.
+`ollama` if you want a non-Anthropic auto-`ModelConfig`. The chart
+auto-creates a `ModelConfig` named `default-model-config` matching
+whichever provider you pick.
 
-### 2. Populate the `ModelConfig`'s API key secret
+### 2. ModelConfig: Gemini on Vertex AI (what this repo ships)
 
-The auto-created `default-model-config` points at a secret the chart
-doesn't create for you (it can't — you own the key). For Anthropic the
-secret name is `kagent-anthropic` and the key is `ANTHROPIC_API_KEY`:
+The Agent here references a `ModelConfig` named **`vertex-gemini`** of
+kind `GeminiVertexAI` (see [`modelconfig-vertex-gemini.yaml`](./modelconfig-vertex-gemini.yaml)).
+We use Vertex rather than the chart's auto-created provider so the
+agent runs on GCP-managed Gemini with service-account auth.
+
+**One-time GCP prep:**
+
+1. Enable the Vertex AI API on your GCP project.
+2. Create a service account (e.g. `kagent-vertex`) with role
+   **`roles/aiplatform.user`** (displayed as "Agent Platform User" in
+   the current GCP UI — same role ID, recent rebrand).
+3. Download a JSON key for the service account.
+
+**Create the secret** kagent will mount as `/creds/key.json`:
 
 ```bash
 kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  create secret generic kagent-anthropic \
-  -n kagent \
-  --from-literal=ANTHROPIC_API_KEY='sk-ant-...your-key...'
+  create secret generic kagent-vertex -n kagent \
+  --from-file=key.json=$HOME/Downloads/<your-sa-key>.json
 ```
 
-Other providers map to different secret names — the chart prints them
-during install. Quick reference:
+**Edit and apply the `ModelConfig`**, setting `projectID` and `location`
+to your GCP project + region:
 
-| `providers.default` | secret name        | secret key            |
-|---------------------|--------------------|-----------------------|
-| `anthropic`         | `kagent-anthropic` | `ANTHROPIC_API_KEY`   |
-| `openAI`            | `kagent-openai`    | `OPENAI_API_KEY`      |
-| `gemini`            | `kagent-gemini`    | `GOOGLE_API_KEY`      |
-| `azureOpenAI`       | `kagent-azure-openai` | `AZUREOPENAI_API_KEY` |
+```bash
+$EDITOR kagent/modelconfig-vertex-gemini.yaml   # set projectID and location
+kubectl --kubeconfig "$KCFG" --context "$KCTX" \
+  apply -f kagent/modelconfig-vertex-gemini.yaml
+```
+
+The kagent controller's translator auto-injects
+`GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`,
+`GOOGLE_GENAI_USE_VERTEXAI=true`, and
+`GOOGLE_APPLICATION_CREDENTIALS=/creds/key.json` into the agent pod, and
+mounts the `kagent-vertex` secret as a volume at `/creds/`. No further
+auth wiring required.
+
+#### Alternative providers
+
+| `spec.provider`     | secret name        | secret key            | notes                          |
+|---------------------|--------------------|-----------------------|--------------------------------|
+| `Anthropic`         | `kagent-anthropic` | `ANTHROPIC_API_KEY`   | direct Anthropic API           |
+| `OpenAI`            | `kagent-openai`    | `OPENAI_API_KEY`      |                                |
+| `Gemini`            | `kagent-gemini`    | `GOOGLE_API_KEY`      | AI Studio (not Vertex)         |
+| `GeminiVertexAI`    | `kagent-vertex`    | `key.json` (file)     | this repo                      |
+| `AnthropicVertexAI` | same shape         | `key.json` (file)     | Claude via Vertex Model Garden |
+
+Edit `spec.declarative.modelConfig` in
+[`agent-ironic-expert.yaml`](./agent-ironic-expert.yaml) if you swap
+providers.
 
 ### 3. Built-in `kagent-tool-server`
 

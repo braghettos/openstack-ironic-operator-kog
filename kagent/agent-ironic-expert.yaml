@@ -29,7 +29,7 @@ spec:
   type: Declarative
   declarative:
     runtime: python
-    modelConfig: default-model-config
+    modelConfig: vertex-gemini
     promptTemplate:
       dataSources:
         - kind: ConfigMap
