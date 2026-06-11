@@ -13,14 +13,18 @@ parentNode: ""
 driver: ipmi
 # driver_info is passed straight to Ironic. Use the keys the driver needs (redfish: redfish_*,
 # ipmi: ipmi_*). Empty by default so a --set override doesn't merge stale keys.
-driver_info: {}
+driver_info:
 
 # Ports required for `inspect_interface: agent` (managed inspection) — Ironic refuses
 # `PUT target=inspect` with "Insufficient information ... does not have any port associated".
 # Same shape as the lifecycle chart's ports value. Supply at least one MAC; the chart renders
 # a Port CR per entry. After discovery completes, deleting this composition deletes the Node
 # AND its Ports; the lifecycle chart will re-create them.
-ports: []
+# Example:
+#   ports:
+#     - address: "00:60:2f:33:81:01"
+#       pxe_enabled: true
+ports:
 
 # Node CR namespace (defaults to release namespace).
 nodeNamespace: ""

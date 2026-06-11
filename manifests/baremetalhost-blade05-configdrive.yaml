@@ -47,15 +47,27 @@ spec:
           plain_text_passwd: baremetal
           lock-passwd: false
           shell: /bin/bash
-          sudo: ['ALL=(ALL) NOPASSWD:ALL']
+          sudo:
+            - "ALL=(ALL) NOPASSWD:ALL"
     networkData:
       links:
-        - {id: enp1s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:01"}
-        - {id: enp2s0, type: phy, ethernet_mac_address: "00:60:2f:35:81:02"}
+        - id: enp1s0
+          type: phy
+          ethernet_mac_address: "00:60:2f:35:81:01"
+        - id: enp2s0
+          type: phy
+          ethernet_mac_address: "00:60:2f:35:81:02"
       networks:
-        - {id: enp1s0, network_id: enp1s0, type: ipv4_dhcp, link: enp1s0}
-        - {id: enp2s0, network_id: enp2s0, type: ipv4_dhcp, link: enp2s0}
+        - id: enp1s0
+          network_id: enp1s0
+          type: ipv4_dhcp
+          link: enp1s0
+        - id: enp2s0
+          network_id: enp2s0
+          type: ipv4_dhcp
+          link: enp2s0
       services:
-        - {type: dns, address: "8.8.8.8"}
+        - type: dns
+          address: "8.8.8.8"
   online: true
   undeploy: true

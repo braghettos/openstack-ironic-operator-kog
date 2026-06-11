@@ -23,7 +23,7 @@ spec:
     namespace: {{ include "baremetal-lifecycle.nodeNamespace" . }}
   name: {{ .Values.nodeName }}
   driver: {{ .Values.driver }}
-  driver_info: {{- toYaml .Values.driver_info | nindent 4 }}
+  driver_info: {{- toYaml (.Values.driver_info | default dict) | nindent 4 }}
   {{- if .Values.nodeUuid }}
   uuid: {{ .Values.nodeUuid | quote }}
   {{- end }}

@@ -5,12 +5,17 @@ nodeName: ""
 nodeUuid: ""           # optional pinned UUID
 parentNode: ""         # optional parent (e.g. enclosure)
 driver: ipmi
-driver_info: {}        # ipmi_* or redfish_* keys
+# driver_info: ipmi_* or redfish_* keys, see Ironic docs. Required at apply time;
+# left bare here so the values.yaml stays in pure YAML (no flow-style braces).
+driver_info:
 nodeNamespace: ""      # defaults to release namespace
 
 # --- Ports (Ironic requires >=1 port for inspect + deploy validation) ---
-# [{address: "00:60:2f:33:81:01", pxe_enabled: true}, ...]
-ports: []
+# Example:
+#   ports:
+#     - address: "00:60:2f:33:81:01"
+#       pxe_enabled: true
+ports:
 
 # --- Optional inspection step ---
 # When true, runs `target: inspect` after manageable; inspection results land in the Node CR's
@@ -22,7 +27,7 @@ enableInspection: false
 # When `image.source` is set, the node walks available -> deploy -> active.
 # When unset, the node stops at `available` (or `manageable` if inspection ran without a
 # provide step — see enableInspection caveat above).
-image: {}
+image:
   # source: "http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2"
   # checksum: "http://172.19.74.1:8089/CHECKSUM"
   # checksum_type: "sha256"  # optional
@@ -37,7 +42,7 @@ image: {}
 # expects (mirrors `openstack/latest/{meta_data.json, user_data, network_data.json}` on the
 # generated ISO). At least one of metaData/userData/networkData must be set; otherwise no
 # config_drive is emitted.
-configDrive: {}
+configDrive:
   # metaData:
   #   uuid: 6b9be9c2-1234-49b0-bc8e-c0ffeec0ffee   # cloud-init reads this as instance-id
   #   hostname: blade03
@@ -94,16 +99,25 @@ detached: false
 # To run clean steps on an `active` node, set cleanSteps AND ALSO drop spec.image.source —
 # the chart will undeploy first, then clean during manageable, then re-deploy if image is
 # put back. Pure-cleaning workflows (no image) just leave image unset.
-cleanSteps: []
+cleanSteps:
 
 # --- Network data (pre-provisioned OS view) ---
 # Merged into instance_info.network_data — Ironic exposes this to cloud-init / config-drive
 # so the deployed OS sees interfaces/routes/services as static config. Distinct from
 # configDrive.networkData, which is what the BOOTLOADER's cloud-init sees during deploy.
-networkData: {}
-  # links:    [{id, type, mac_address, ...}]
-  # networks: [{id, type, link, ip_address, netmask, ...}]
-  # services: [{type, address}]
+networkData:
+  # links:
+  #   - id: enp1s0
+  #     type: phy
+  #     ethernet_mac_address: "00:60:2f:..."
+  # networks:
+  #   - id: enp1s0
+  #     network_id: enp1s0
+  #     type: ipv4_dhcp
+  #     link: enp1s0
+  # services:
+  #   - type: dns
+  #     address: "8.8.8.8"
 
 # --- Undeploy ---
 # Set undeploy=true to drive the blade from `active` back to `available` via the

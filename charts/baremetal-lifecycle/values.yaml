@@ -13,24 +13,37 @@ driver: ipmi
 #   redfish: redfish_address, redfish_system_id, redfish_username, redfish_password
 #            [, redfish_verify_ca]
 # Default is {} so set-merges from values overrides do NOT drag stale keys across drivers.
-driver_info: {}
+driver_info:
 
 # Ports rendered as KOG Port CRs (one per entry). Address is the NIC MAC, pxe_enabled
 # selects the PXE boot interface. node_uuid is filled in from nodeUuid (must be set).
-# Format: [{ address: "00:60:2f:32:81:01", pxe_enabled: true }, ...]
-ports: []
+# Example:
+#   ports:
+#     - address: "00:60:2f:32:81:01"
+#       pxe_enabled: true
+ports:
 
 # instance_info required before deploy (available -> active)
-instance_info: {}
-  # image_source: "http://172.19.74.1:8089/debian-12-generic-amd64.qcow2"
-  # image_checksum: "http://172.19.74.1:8089/CHECKSUM"
+# Example:
+#   instance_info:
+#     image_source: "http://172.19.74.1:8089/debian-12-generic-amd64.qcow2"
+#     image_checksum: "http://172.19.74.1:8089/CHECKSUM"
+instance_info:
 
-# Config Drive for cloud-init (merged into instance_info when deploy)
-# Ironic builds config drive from meta_data, user_data, network_data
-configDrive: {}
-  # metaData: { hostname: "server1", uuid: "...", meta: {} }
-  # userData: "#cloud-config\npackage_update: true\n..."
-  # networkData: { networks: [], services: [] }
+# Config Drive for cloud-init (merged into instance_info at deploy time).
+# Ironic builds config drive from meta_data, user_data, network_data.
+# Example:
+#   configDrive:
+#     metaData:
+#       hostname: "server1"
+#       uuid: "<node-uuid>"
+#     userData: |
+#       #cloud-config
+#       package_update: true
+#     networkData:
+#       networks: []
+#       services: []
+configDrive:
 
 # Ironic API endpoint used by the provisioner Job (standalone/noauth).
 ironicApiUrl: "http://ironic.openstack.svc.cluster.local:6385"

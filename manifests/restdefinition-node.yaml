@@ -46,12 +46,14 @@ spec:
           name: X-Ironic-Endpoint
           in: header
         fromRestDefinition:
-          actions: ["*"]
+          actions:
+            - "*"
       - fromOpenAPI:
           name: X-OpenStack-Ironic-API-Version
           in: header
         fromRestDefinition:
-          actions: ["*"]
+          actions:
+            - "*"
     verbsDescription:
       - action: findby
         method: GET

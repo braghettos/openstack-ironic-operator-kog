@@ -14,7 +14,7 @@ spec:
   nodeName: metal-a
   nodeNamespace: openstack
   driver: fake-hardware          # use ipmi/redfish + driver_info for real hardware
-  driver_info: {}
+  driver_info:
   instance_info:
     image_source: http://example.invalid/image.qcow2
     image_checksum: "0"

@@ -33,7 +33,9 @@ spec:
       containers:
         - name: proxy
           image: quay.io/airshipit/openstack-client:2026.1-ubuntu_noble
-          command: ["bash", "-c"]
+          command:
+            - bash
+            - "-c"
           args:
             - |
               set -e
@@ -62,7 +64,8 @@ spec:
               exec python3 /app/keystone-ironic-proxy.py
           securityContext:
             capabilities:
-              add: ["NET_ADMIN"]
+              add:
+                - NET_ADMIN
           env:
             - name: OS_CLOUD
               # Project-scoped admin works for both node:create AND port:create when the

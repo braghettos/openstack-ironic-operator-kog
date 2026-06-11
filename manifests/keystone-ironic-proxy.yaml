@@ -31,7 +31,9 @@ spec:
       containers:
         - name: proxy
           image: quay.io/airshipit/openstack-client:2026.1-ubuntu_noble
-          command: ["python3", "/app/keystone-ironic-proxy.py"]
+          command:
+            - python3
+            - /app/keystone-ironic-proxy.py
           env:
             - name: OS_CLOUD
               value: "openstack"          # set to the cloud name in your clouds.yaml

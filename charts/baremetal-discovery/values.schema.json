@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "BareMetal Discovery Chart Values",
   "type": "object",
-  "required": ["nodeName", "driver", "driver_info"],
+  "required": ["nodeName", "driver"],
   "properties": {
     "nodeName": {
       "type": "string",
@@ -22,11 +22,11 @@
       "description": "Ironic driver for BMC management"
     },
     "driver_info": {
-      "type": "object",
+      "type": ["object", "null"],
       "description": "Driver credentials (ipmi_address/redfish_address, etc.)"
     },
     "ports": {
-      "type": "array",
+      "type": ["array", "null"],
       "description": "PXE MAC addresses for Port CRs. At least one is required for managed inspection (inspect_interface: agent)."
     },
     "nodeNamespace": {
