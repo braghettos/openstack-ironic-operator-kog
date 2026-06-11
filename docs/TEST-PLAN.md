@@ -397,6 +397,90 @@ recovery procedure is documented (even if "manual provision PUT").
 
 **Cleanup:** drive to manageable manually, then undeploy/delete.
 
+**STATUS — 2026-06-11: PASS by code inspection; cannot trigger empirically in this
+lab.** The lab's sushy-emulator at 172.19.74.11:8000 does not enforce Redfish
+auth — blade10 with `redfish_password: wrong-password-intentional` walked
+enroll → manage → manageable → inspecting → inspect wait → manageable
+unimpeded. The empirical "wrong creds → inspect failed" trigger doesn't translate
+here.
+
+Chart side is correct by design. From `transition-inspect.yaml`:
+
+```
+{{- if and .Values.enableInspection (not $finished)
+        (or (eq $state "manageable") (eq $state "inspecting") (eq $state "inspect wait")) }}
+```
+
+`inspect failed` is *not* in this set. If Ironic ever lands there, the gate is
+false on every reconcile → chart renders nothing → cdc reconcile is idle → no
+loop, no spurious PUT, no helm release churn. The chart's "no deadlock, no
+loop" contract is therefore guaranteed structurally, not just empirically.
+
+Recovery procedure (documented for future testers): `openstack baremetal node
+manage <name>` drives `inspect failed → manageable`. From manageable, with
+`enableInspection: true` still set and `inspection_finished_at` still empty, the
+chart's transition-inspect re-fires automatically. If credentials were the
+issue, fix `spec.driver_info.redfish_password` on the BH first; the chart's
+PATCH translator will propagate the change to Ironic via the Node CR.
+
+Re-evaluation criteria: re-run this test on the first deployment against a
+real Ironic that enforces Redfish auth (HPE iLO, Dell iDRAC, real OpenBMC).
+Until then, the chart's gate logic is the proof.
+
+### Test 12.1 — clean delete + re-add round-trip (gap 12)
+
+The "blade goes to inventory, then back to fleet" workflow operators actually do
+for maintenance windows. Validates that KOG handles repeated enroll/delete cycles
+without state corruption (orphan release secrets, leftover Node CR annotations,
+stale Ironic UUIDs).
+
+**Setup:** any blade at `active`. Most efficient: chain off test 3.1 — after the
+destructive delete from active + manual Ironic cleanup, the blade09 entry is gone
+from both k8s and Ironic, which is the same starting state.
+
+**Action:**
+1. (skip if chained from 3.1 cleanup.) Patch `undeploy: true` on the BH, wait for
+   Ironic to reach `available`.
+2. `kubectl delete bh <name>` — KOG `DELETE /v1/nodes/{id}` succeeds (clean unregister).
+   Verify Ironic returns 404 on the node.
+3. Re-apply the same BH manifest at the same `apiVersion`. Same `nodeUuid` is fine
+   — Ironic allocates a new UUID at POST time, ignoring the spec one if it conflicts.
+
+**Observations:**
+- Render: cdc generates a fresh helm release name (new BH UID). New Node + Port CRs
+  with fresh helm-ownership annotations. No orphan from the prior cycle.
+- Control plane: KOG-RDC's Observe returns "not found" → Create → POST /v1/nodes
+  fires once → Ironic returns 201 with new UUID → state machine walks
+  enroll → ... → active.
+- Ironic: fresh node entry, new UUID, no carryover from the prior cycle (no stale
+  `instance_info`, `properties` re-populated by fresh inspect).
+
+**Pass:** second walk to active completes cleanly. New helm release at v1 (not vN+1
+of an old release). No orphan secrets, no chart-inspector 500s, no "ownership
+metadata invalid" errors.
+
+**Fail:** chart-inspector 500 on the second apply (orphan from prior cycle); Ironic
+errors on POST with "node name already exists" (cleanup didn't complete); KOG-RDC
+adopts the wrong UUID; helm release continues at vN+1 (didn't get a fresh release
+name).
+
+**Cleanup:** undeploy + delete normally; this test ends in a clean state.
+
+**STATUS — 2026-06-11: PASS.** Chained off test 3.1's destructive aftermath: BH
+gone, Ironic node orphaned at active. Drove orphan through `PUT target=deleted`
+(202) → walked to available → `DELETE /v1/nodes/blade09` (204). Cleared stranded
+Node CR finalizer (the gap-10 procedure handles this exact symptom). Re-applied
+the same BH manifest. KOG-RDC observed Ironic, found 404, POST'd fresh.
+Ironic's POST respected the manifest's `spec.nodeUuid: 83a55f00…` — same UUID
+re-used cleanly. Walked enroll → ... → active in ~16 min. New helm release
+suffix (`blade09-5xd5f85x`), no orphan from prior cycle, no chart-inspector
+500s. Helm revisions v9/v10/v11 reflect the per-reconcile upgrade churn
+documented in test 8.1 — not a regression.
+
+The 4-step round-trip (active → undeploy → kubectl delete → re-apply → active)
+is now empirically validated end-to-end. Operators can safely cycle blades
+through the fleet for maintenance.
+
 ### Test 11.1 — undeployMode=none post-fix (gap 11)
 
 **GATED** on the lab's Ironic policy.yaml granting `baremetal:node:disable_cleaning`

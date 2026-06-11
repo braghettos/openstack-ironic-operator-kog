@@ -1,0 +1,32 @@
+# Gap 3 (docs/TEST-PLAN.md): unsafe kubectl delete bh from active.
+# Walk blade09 to active normally. Then `kubectl delete bh blade09` and verify
+# the README warning: BH disappears from k8s, Ironic node remains orphan, KOG
+# DELETE 409s on the active node.
+---
+apiVersion: composition.krateo.io/v0-3-3
+kind: BaremetalHost
+metadata:
+  name: blade09
+  namespace: openstack
+spec:
+  nodeName: blade09
+  nodeNamespace: openstack
+  nodeUuid: 83a55f00-9d6f-476b-b339-7196dd1d7ccb
+  parentNode: 5113ab44-faf2-4f76-bb41-ea8b14b7aa92
+  driver: redfish
+  driver_info:
+    redfish_address: http://172.19.74.11:8000
+    redfish_verify_ca: false
+    redfish_username: ironic
+    redfish_password: baremetal
+    redfish_system_id: /redfish/v1/Systems/blade09
+  ports:
+    - address: "00:60:2f:39:81:01"
+      pxe_enabled: true
+    - address: "00:60:2f:39:81:02"
+      pxe_enabled: false
+  enableInspection: true
+  image:
+    source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
+    checksum: http://172.19.74.1:8089/CHECKSUM
+  online: true
