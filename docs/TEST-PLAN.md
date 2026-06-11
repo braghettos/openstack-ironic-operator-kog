@@ -335,8 +335,16 @@ recovery procedure is documented (even if "manual provision PUT").
 
 ### Test 11.1 — undeployMode=none post-fix (gap 11)
 
-**GATED** on Ettore confirming the project-scoped admin policy now allows the
-`automated_clean` PATCH.
+**GATED** on the lab's Ironic policy.yaml granting `baremetal:node:disable_cleaning`
+to project-scoped admin (or wider). The 403 we hit during scenario C+D is *specific
+to setting `automated_clean: false`* — enabling cleaning is fine; disabling is the
+guarded case. Confirmed via four hand-curl tests (different ops / content-types /
+microversions / value types): only the boolean `false` value triggers the policy
+denial, with the error message naming the exact rule:
+`Access was denied to the following resource: baremetal:node:disable_cleaning`.
+
+Until the policy is relaxed (or we route this specific PATCH through the
+system-scoped token entry already in clouds.yaml), this test cannot run.
 
 **Setup:** blade11 at active, `undeployMode: none` in spec.
 
