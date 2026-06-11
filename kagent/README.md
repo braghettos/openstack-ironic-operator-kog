@@ -35,20 +35,13 @@ Pulled directly from the GHCR OCI registry — no `helm repo add` needed.
 Verified working on kagent v0.9.6.
 
 ```bash
-KCFG=local/kubeconfig.ironic-lab            # your isolated kubeconfig
-KCTX=kind-ironic-lab                        # your cluster context
+kubectl create ns kagent --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  create ns kagent --dry-run=client -o yaml | \
-  kubectl --kubeconfig "$KCFG" --context "$KCTX" apply -f -
-
-helm --kubeconfig "$KCFG" --kube-context "$KCTX" \
-  upgrade --install kagent-crds \
+helm upgrade --install kagent-crds \
   oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
   --version 0.9.6 --namespace kagent --wait --timeout 5m
 
-helm --kubeconfig "$KCFG" --kube-context "$KCTX" \
-  upgrade --install kagent \
+helm upgrade --install kagent \
   oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --version 0.9.6 --namespace kagent \
   --set providers.default=anthropic \
@@ -79,8 +72,7 @@ agent runs on GCP-managed Gemini with service-account auth.
 **Create the secret** kagent will mount as `/creds/key.json`:
 
 ```bash
-kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  create secret generic kagent-vertex -n kagent \
+kubectl -n kagent create secret generic kagent-vertex \
   --from-file=key.json=$HOME/Downloads/<your-sa-key>.json
 ```
 
@@ -89,8 +81,7 @@ to your GCP project + region:
 
 ```bash
 $EDITOR kagent/modelconfig-vertex-gemini.yaml   # set projectID and location
-kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  apply -f kagent/modelconfig-vertex-gemini.yaml
+kubectl apply -f kagent/modelconfig-vertex-gemini.yaml
 ```
 
 The kagent controller's translator auto-injects
@@ -122,10 +113,8 @@ Provides the `k8s_*` tool family the Agent uses. No extra setup.
 ## Apply
 
 ```bash
-kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  apply -f kagent/agent-ironic-expert.yaml
-kubectl --kubeconfig "$KCFG" --context "$KCTX" \
-  -n kagent get agent ironic-kog-expert
+kubectl apply -f kagent/agent-ironic-expert.yaml
+kubectl -n kagent get agent ironic-kog-expert
 ```
 
 Then open the kagent UI (or the A2A endpoint) and ask one of the example

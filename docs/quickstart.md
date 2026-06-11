@@ -92,3 +92,72 @@ openstack baremetal node list
 Drive `enroll → manageable → available → active` with `NodeProvision` CRs (or a
 `BaremetalLifecycle` Composition). `Port`, `PortGroup`, `Allocation` and
 `DeployTemplate` are managed the same way.
+
+## 5. (Optional) Install the kagent SME
+
+The repo ships a [kagent](https://kagent.dev) `Agent` CRD —
+`ironic-kog-expert` — that turns an LLM into a subject-matter expert on
+this blueprint: the two-layer architecture, the FSM, the stuck-state
+recovery levers, and the comparison vs `metal3-io/baremetal-operator`.
+
+### Install kagent (v0.9.6, pulled from GHCR)
+
+```bash
+kubectl create ns kagent --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install kagent-crds \
+  oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
+  --version 0.9.6 --namespace kagent --wait --timeout 5m
+
+helm upgrade --install kagent \
+  oci://ghcr.io/kagent-dev/kagent/helm/kagent \
+  --version 0.9.6 --namespace kagent \
+  --set providers.default=anthropic \
+  --set providers.anthropic.model=claude-sonnet-4-6 \
+  --timeout 10m
+```
+
+### Wire up a model provider
+
+The chart auto-creates a `ModelConfig` named `default-model-config`
+matching `providers.default` (`anthropic`, `openAI`, `gemini`,
+`azureOpenAI`, or `ollama`). You then create the secret it expects —
+e.g. for Anthropic:
+
+```bash
+kubectl -n kagent create secret generic kagent-anthropic \
+  --from-literal=ANTHROPIC_API_KEY='sk-ant-...'
+```
+
+For **Gemini on Vertex AI** (what this repo ships in
+[`kagent/modelconfig-vertex-gemini.yaml`](../kagent/modelconfig-vertex-gemini.yaml)),
+mount a GCP service-account JSON instead:
+
+```bash
+kubectl -n kagent create secret generic kagent-vertex \
+  --from-file=key.json=$HOME/Downloads/<your-sa-key>.json
+
+$EDITOR kagent/modelconfig-vertex-gemini.yaml  # set projectID + location
+kubectl apply -f kagent/modelconfig-vertex-gemini.yaml
+```
+
+See [`kagent/README.md`](../kagent/README.md) for the provider matrix
+(Anthropic, OpenAI, Gemini, GeminiVertexAI, AnthropicVertexAI) and the
+GCP service-account prep walkthrough.
+
+### Apply the agent and talk to it
+
+```bash
+kubectl apply -f kagent/agent-ironic-expert.yaml
+kubectl -n kagent get agent ironic-kog-expert    # wait for READY=True
+
+kubectl -n kagent port-forward svc/kagent-ui 8080:8080
+# → http://localhost:8080 → pick "ironic-kog-expert"
+```
+
+Example prompts the agent is wired to answer well:
+
+- "How does the `BaremetalHost` composition drive Ironic state transitions?"
+- "`blade07` has been in `wait call-back` for 20 minutes — what now?"
+- "Why would I pick this over metal3?"
+- "Walk me through the `spec.undeploy` widening introduced in v0.3.4."
