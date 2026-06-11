@@ -5,7 +5,7 @@
 # - Observe whether the chart's transition-power renames + restores, or
 #   whether Ironic surfaces a terminal deploy failure.
 ---
-apiVersion: composition.krateo.io/v0-3-3
+apiVersion: composition.krateo.io/v0-3-4
 kind: BaremetalHost
 metadata:
   name: blade06
@@ -32,3 +32,5 @@ spec:
     source: http://172.19.74.1:8089/debian-13-genericcloud-amd64.qcow2
     checksum: http://172.19.74.1:8089/CHECKSUM
   online: true
+  undeploy: true       # gap 4 recovery: drive out of stuck wait call-back
+  undeployMode: none

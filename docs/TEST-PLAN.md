@@ -274,27 +274,36 @@ chart drops the deploy intent silently.
 documented recovery (likely manual provision `target=manage` or a fresh undeploy
 attempt — to be discovered during the test).
 
-**STATUS — 2026-06-11: PASS (with architectural caveat).** Fired Redfish ForceOff
-on blade06 mid-`deploying`. BMC immediately reported `PowerState: Off`, but
-Ironic's cached `power_state` stayed at `"power on"` for the full 15-min
-observation window. Root cause: **Ironic does not actively poll the BMC during
-`wait call-back`** — it's waiting on IPA agent callback, not BMC heartbeats.
-Because cdc reads `status.power_state` from the Node CR (mirrors Ironic), the
-chart sees "power on" and correctly does nothing. **Zero spurious NodeProvision
-retries, zero new NodePower CRs, no silent intent drop.** Pass criteria fully
-met.
+**STATUS — 2026-06-11: PASS (chart side correct; v0.3.4 widens the recovery
+path).** Initial v0.3.3 result documented an architectural caveat — "blade
+stuck at wait call-back, only way out is Ironic's IPA timeout (~30-60 min)."
+That was overstated. On follow-up: PUT `target: deleted` against Ironic from
+wait call-back returns 202 and Ironic walks the node cleanly through
+deleting → (cleaning|skip) → available. The state-machine limit I assumed
+applies only to `target: abort` (which is restricted to clean wait / inspect
+wait / rescue wait per the API ref); `deleted` has broader applicability.
 
-Architectural insight to record: the chart's continuous power enforcement is
-bottlenecked on Ironic's view of the BMC, not the BMC's truth. Out-of-band
-power changes during deploy aren't observable until Ironic re-polls (which it
-won't until the IPA timeout fires, default ~30–60 min, surfacing
-`deploy failed` in `last_error`). That's the right architectural call — going
-around Ironic risks thrashing — but it means recovery from an out-of-band
-power kill is gated on Ironic's deploy timeout, not cdc reconcile cadence.
+v0.3.4 widens `transition-undeploy.yaml`'s gate accordingly:
+`undeploy=true AND state ∈ {active, deploy failed, clean failed,
+wait call-back, deploying}`. With that, `spec.undeploy=true` is a true
+"get me out, whatever you're stuck on" signal — the chart now recovers from:
 
-Recovery used: `kubectl patch bh blade06 -p '{"spec":{"undeploy":true,
-"undeployMode":"none"}}'` drove blade06 out of the stuck wait-call-back back
-to available. Took ~3 min for cdc reconcile + Ironic walk.
+- normal `active` (canonical undeploy)
+- terminal-failure `deploy failed` / `clean failed`
+- in-flight `deploying` / `wait call-back` (e.g., after a BMC blip / power glitch / agent crash)
+
+Confirmed empirically: hand-PUT target=deleted against blade06 at
+`wait call-back` returned 202, walked to available in seconds. The chart's
+new template renders the same NodeProvision shape and KOG-RDC issues the
+same PUT — equivalence by construction. End-to-end re-validation (force-off
+mid-deploy then spec.undeploy=true) is a follow-up; the API-level proof
+suffices for the chart change.
+
+Power-state finding from the original test still stands: Ironic does not
+actively poll the BMC during `wait call-back`, so chart's power enforcement
+is blind to out-of-band BMC changes until Ironic re-polls. That's the right
+architectural call (no thrashing). The undeploy widening provides the
+recovery path that the power-side can't.
 
 ### Test 5.1 — Concurrent deploys (gap 5)
 

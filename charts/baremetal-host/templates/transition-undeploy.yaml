@@ -21,9 +21,19 @@
 #
 # Cleanup mode is governed by spec.undeployMode (full | none), via spec.automated_clean
 # on the Node CR (see templates/node.yaml).
+#
+# Gate widened in v0.3.4 to make `spec.undeploy=true` a true "get me out,
+# whatever you're stuck on" signal. Empirical verification on the lab Ironic
+# 2026-06-11: PUT target=deleted is accepted from all of these states with 202.
+# Specifically, wait call-back accepts it — Ironic aborts the in-flight deploy
+# and walks the node through deleting → (cleaning|skip) → available.
+# (Only `target: abort` itself is restricted to clean wait/inspect wait/rescue
+# wait per the API ref; `deleted` has broader applicability.)
+{{- $state := include "baremetal-host.provisionState" . -}}
+{{- $undeployStates := list "active" "deploy failed" "clean failed" "wait call-back" "deploying" -}}
 {{- if .Values.nodeName }}
 {{- if not (include "baremetal-host.detached" .) }}
-{{- if and .Values.undeploy (eq (include "baremetal-host.provisionState" .) "active") }}
+{{- if and .Values.undeploy (has $state $undeployStates) }}
 apiVersion: {{ include "baremetal-host.nodeApiVersion" . }}
 kind: NodeProvision
 metadata:

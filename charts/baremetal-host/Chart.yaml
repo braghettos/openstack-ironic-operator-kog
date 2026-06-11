@@ -7,7 +7,7 @@ description: |
     registering -> (inspecting -> ready)? -> available -> (provisioning -> provisioned)
   Power is managed via spec.online when set.
 type: application
-version: 0.3.3
+version: 0.3.4
 appVersion: "1.0"
 keywords:
   - ironic
